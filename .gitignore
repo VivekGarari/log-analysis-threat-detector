@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Conda
+# Do not ignore the project itself; environments should live outside it.
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Generated reports
+reports/*
+
+# Local logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Python tooling
+.mypy_cache/
+.ruff_cache/

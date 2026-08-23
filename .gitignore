@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
+*.pyc
+
 # Virtual environments
 .venv/
 venv/
@@ -47,3 +50,6 @@ reports/*
 # Python tooling
 .mypy_cache/
 .ruff_cache/
+
+benchmarks/results/
+data/generated/

@@ -1,5 +1,5 @@
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
+import heapq
+from datetime import datetime, timedelta, timezone
 
 from threat_detector.alerts.models import Alert
 from threat_detector.detection.base import DetectionRule
@@ -14,8 +14,11 @@ class SSHBruteForceRule(DetectionRule):
 	threshold = 5
 
 	def __init__(self) -> None:
-		self._failures: dict[str, deque[tuple[datetime, NormalizedEvent]]] = defaultdict(deque)
+		self._failures: dict[str, dict[int, tuple[datetime, NormalizedEvent]]] = {}
+		self._expiration_heap: list[tuple[datetime, int, str]] = []
 		self._alerted_ips: set[str] = set()
+		self._next_sequence = 0
+		self._max_event_timestamp: datetime | None = None
 
 	def process(self, event: NormalizedEvent) -> Alert | None:
 		if (
@@ -26,12 +29,41 @@ class SSHBruteForceRule(DetectionRule):
 			return None
 
 		timestamp = self._parse_timestamp(event.timestamp)
-		failures = self._failures[event.source_ip]
-		failures.append((timestamp, event))
+		if self._max_event_timestamp is None:
+			self._max_event_timestamp = timestamp
+		else:
+			self._max_event_timestamp = max(self._max_event_timestamp, timestamp)
 
-		cutoff = timestamp - timedelta(seconds=self.window_seconds)
-		while failures and failures[0][0] < cutoff:
-			failures.popleft()
+		watermark = self._max_event_timestamp
+		cutoff = watermark - timedelta(seconds=self.window_seconds)
+		if timestamp < cutoff:
+			return None
+
+		while self._expiration_heap and self._expiration_heap[0][0] < watermark:
+			_, sequence_id, source_ip = heapq.heappop(self._expiration_heap)
+			failures = self._failures.get(source_ip)
+			if failures is None:
+				continue
+			if failures.pop(sequence_id, None) is None:
+				continue
+			if not failures:
+				del self._failures[source_ip]
+				self._alerted_ips.discard(source_ip)
+			elif len(failures) < self.threshold:
+				self._alerted_ips.discard(source_ip)
+
+		sequence_id = self._next_sequence
+		self._next_sequence += 1
+		failures = self._failures.setdefault(event.source_ip, {})
+		failures[sequence_id] = (timestamp, event)
+		heapq.heappush(
+			self._expiration_heap,
+			(
+				timestamp + timedelta(seconds=self.window_seconds),
+				sequence_id,
+				event.source_ip,
+			),
+		)
 
 		if len(failures) < self.threshold:
 			self._alerted_ips.discard(event.source_ip)
@@ -41,7 +73,7 @@ class SSHBruteForceRule(DetectionRule):
 			return None
 
 		self._alerted_ips.add(event.source_ip)
-		events = [failure for _, failure in failures]
+		events = [failure for _, failure in failures.values()]
 		evidence = [
 			f"Authentication failure from {failure.source_ip} at {failure.timestamp}"
 			f" for user {failure.username or 'unknown'}"
@@ -71,4 +103,6 @@ class SSHBruteForceRule(DetectionRule):
 		try:
 			return datetime.fromisoformat(timestamp)
 		except ValueError:
-			return datetime.strptime(timestamp, "%b %d %H:%M:%S")
+			return datetime.strptime(timestamp, "%b %d %H:%M:%S").replace(
+				tzinfo=timezone.utc
+			)

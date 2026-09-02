@@ -31,6 +31,7 @@ def test_state_retention_by_source_ip_cardinality():
                     source_port=22,
                     success=False,
                     raw=f"authentication failure from {source_ip}",
+                    service="ssh",
                 )
             )
 
@@ -67,6 +68,7 @@ def test_expiration_of_500_000_source_ips():
                 source_port=22,
                 success=False,
                 raw=f"authentication failure from {source_ip}",
+                service="ssh",
             )
         )
 
@@ -84,6 +86,7 @@ def test_expiration_of_500_000_source_ips():
             source_port=22,
             success=False,
             raw="sentinel authentication failure",
+            service="ssh",
         )
     )
     elapsed_seconds = time.perf_counter() - start_time
@@ -122,6 +125,7 @@ def test_expired_per_ip_state_is_removed():
                 source_port=22,
                 success=False,
                 raw=f"authentication failure from {source_ip}",
+                service="ssh",
             )
         )
 
@@ -137,6 +141,7 @@ def test_expired_per_ip_state_is_removed():
             source_port=22,
             success=False,
             raw="authentication failure after the window",
+            service="ssh",
         )
     )
 

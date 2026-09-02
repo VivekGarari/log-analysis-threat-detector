@@ -32,17 +32,19 @@ def test_linux_ssh_failures_trigger_brute_force_alert():
 
 
 def test_successful_linux_ssh_authentication_does_not_alert():
-	successful_line = (
-		"Jan  1 00:00:50 web-01 sshd[1006]: Accepted password for alice "
-		"from 203.0.113.50 port 2222"
-	)
-	engine = DetectionEngine([SSHBruteForceRule()])
+    successful_line = (
+        "Jan  1 00:00:50 web-01 sshd[1006]: Accepted password for alice "
+        "from 203.0.113.50 port 2222"
+    )
+    engine = DetectionEngine([SSHBruteForceRule()])
 
-	parsed = parse_line(successful_line)
+    parsed = parse_line(successful_line)
 
-	assert parsed is None
-	successful_alerts = []
-	if parsed is not None:
-		successful_alerts = engine.process(normalize_linux_event(parsed))
+    assert parsed is not None
+    assert parsed.event_type == "authentication_success"
 
-	assert successful_alerts == []
+    normalized = normalize_linux_event(parsed)
+    assert normalized.success is True
+
+    alerts = engine.process(normalized)
+    assert alerts == []

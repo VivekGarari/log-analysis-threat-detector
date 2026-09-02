@@ -5,25 +5,27 @@ from threat_detector.normalization.event import NormalizedEvent
 
 
 def make_event(
-	timestamp: str,
-	*,
-	source: str = "linux_auth",
-	event_type: str = "authentication_failure",
-	source_ip: str | None = "192.0.2.10",
-	success: bool | None = False,
-	raw: str | None = None,
+    timestamp: str,
+    *,
+    source: str = "linux_auth",
+    service: str = "ssh",
+    event_type: str = "authentication_failure",
+    source_ip: str | None = "192.0.2.10",
+    success: bool | None = False,
+    raw: str | None = None,
 ) -> NormalizedEvent:
-	return NormalizedEvent(
-		timestamp=timestamp,
-		source=source,
-		event_type=event_type,
-		hostname="server",
-		username="alice",
-		source_ip=source_ip,
-		source_port=22,
-		success=success,
-		raw=raw or f"raw event at {timestamp}",
-	)
+    return NormalizedEvent(
+        timestamp=timestamp,
+        source=source,
+        event_type=event_type,
+        hostname="server",
+        username="alice",
+        source_ip=source_ip,
+        source_port=22,
+        success=success,
+        raw=raw or f"raw event at {timestamp}",
+        service=service,
+    )
 
 
 def timestamp(second: int, *, minute: int = 0) -> str:
@@ -108,19 +110,35 @@ def test_new_sequence_can_trigger_after_previous_window_expires():
 	assert sum(alert is not None for alert in alerts) == 1
 
 
-def test_non_linux_auth_events_are_ignored():
-	rule = SSHBruteForceRule()
+def test_non_ssh_authentication_events_are_ignored():
+    rule = SSHBruteForceRule()
 
-	for second in range(5):
-		assert (
-			rule.process(
-				make_event(
-					timestamp(second),
-					source="apache",
-				)
-			)
-			is None
-		)
+    for second in range(5):
+        assert (
+            rule.process(
+                make_event(
+                    timestamp(second),
+                    event_type="invalid_user",
+                    service="http",
+                )
+            )
+            is None
+        )
+
+
+def test_non_ssh_authentication_failures_are_ignored():
+    rule = SSHBruteForceRule()
+
+    assert (
+        rule.process(
+            make_event(
+                timestamp(0),
+                event_type="authentication_failure",
+                service="http",
+            )
+        )
+        is None
+    )
 
 
 def test_successful_authentication_events_are_ignored():

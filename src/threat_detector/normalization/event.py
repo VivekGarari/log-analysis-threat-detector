@@ -12,3 +12,4 @@ class NormalizedEvent:
     source_port: int | None
     success: bool | None
     raw: str
+    service: str | None = None

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from threat_detector.detection.engine import DetectionEngine
 from threat_detector.detection.rules.ssh_brute_force import SSHBruteForceRule
 from threat_detector.normalization.linux_auth import normalize_linux_event
@@ -14,12 +16,13 @@ def test_linux_ssh_failures_trigger_brute_force_alert():
 	]
 	engine = DetectionEngine([SSHBruteForceRule()])
 	alerts = []
+	reference_datetime = datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
 
 	for second, raw_line in zip((0, 10, 20, 30, 40), raw_lines):
 		parsed = parse_line(raw_line)
 		assert parsed is not None
-		normalized = normalize_linux_event(parsed)
-		normalized.timestamp = f"2026-01-01T00:00:{second:02d}"
+		normalized = normalize_linux_event(parsed, reference_datetime)
+		normalized.timestamp = normalized.timestamp.replace(second=second)
 		alerts.append(engine.process(normalized))
 
 	assert alerts[:4] == [[], [], [], []]
@@ -43,7 +46,9 @@ def test_successful_linux_ssh_authentication_does_not_alert():
     assert parsed is not None
     assert parsed.event_type == "authentication_success"
 
-    normalized = normalize_linux_event(parsed)
+    normalized = normalize_linux_event(
+        parsed, datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
+    )
     assert normalized.success is True
 
     alerts = engine.process(normalized)

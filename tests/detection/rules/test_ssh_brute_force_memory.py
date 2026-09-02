@@ -9,7 +9,7 @@ from threat_detector.normalization.event import NormalizedEvent
 
 # Investigative benchmark for retained state, not a pytest correctness requirement.
 def test_state_retention_by_source_ip_cardinality():
-    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat()
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
     cardinalities = (10_000, 100_000, 500_000)
 
     print("unique_ips,failures_entries,retained_events,current_bytes,peak_bytes")
@@ -59,7 +59,7 @@ def test_expiration_of_500_000_source_ips():
         source_ip = f"198.51.{index // 256}.{index % 256}"
         rule.process(
             NormalizedEvent(
-                timestamp=start_timestamp.isoformat(),
+                timestamp=start_timestamp,
                 source="linux_auth",
                 event_type="authentication_failure",
                 hostname="server",
@@ -77,7 +77,7 @@ def test_expiration_of_500_000_source_ips():
     )
     rule.process(
         NormalizedEvent(
-            timestamp=sentinel_timestamp.isoformat(),
+            timestamp=sentinel_timestamp,
             source="linux_auth",
             event_type="authentication_failure",
             hostname="server",
@@ -116,7 +116,7 @@ def test_expired_per_ip_state_is_removed():
     for source_ip in source_ips:
         rule.process(
             NormalizedEvent(
-                timestamp=timestamp.isoformat(),
+                timestamp=timestamp,
                 source="linux_auth",
                 event_type="authentication_failure",
                 hostname="server",
@@ -132,7 +132,7 @@ def test_expired_per_ip_state_is_removed():
     expired_timestamp = timestamp + timedelta(seconds=rule.window_seconds + 1)
     rule.process(
         NormalizedEvent(
-            timestamp=expired_timestamp.isoformat(),
+            timestamp=expired_timestamp,
             source="linux_auth",
             event_type="authentication_failure",
             hostname="server",

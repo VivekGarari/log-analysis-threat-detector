@@ -1,5 +1,5 @@
 import heapq
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from threat_detector.alerts.models import Alert
 from threat_detector.detection.base import DetectionRule
@@ -28,7 +28,7 @@ class SSHBruteForceRule(DetectionRule):
         ):
             return None
 
-        timestamp = self._parse_timestamp(event.timestamp)
+        timestamp = event.timestamp
         if self._max_event_timestamp is None:
             self._max_event_timestamp = timestamp
         else:
@@ -95,14 +95,3 @@ class SSHBruteForceRule(DetectionRule):
             evidence=evidence,
             raw_events=raw_events,
         )
-
-    @staticmethod
-    def _parse_timestamp(timestamp: str) -> datetime:
-        if timestamp.endswith("Z"):
-            timestamp = f"{timestamp[:-1]}+00:00"
-        try:
-            return datetime.fromisoformat(timestamp)
-        except ValueError:
-            return datetime.strptime(timestamp, "%b %d %H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )

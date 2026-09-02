@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
@@ -8,7 +9,7 @@ class Alert:
     severity: str
     title: str
     description: str
-    timestamp: str
+    timestamp: datetime
     source_ip: str | None
     username: str | None
     evidence: list[str]

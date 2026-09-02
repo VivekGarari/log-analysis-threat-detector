@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
 class NormalizedEvent:
-    timestamp: str
+    timestamp: datetime
     source: str
     event_type: str
     hostname: str | None

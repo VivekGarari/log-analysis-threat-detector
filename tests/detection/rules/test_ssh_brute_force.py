@@ -5,7 +5,7 @@ from threat_detector.normalization.event import NormalizedEvent
 
 
 def make_event(
-    timestamp: str,
+    timestamp: datetime,
     *,
     source: str = "linux_auth",
     service: str = "ssh",
@@ -28,8 +28,8 @@ def make_event(
     )
 
 
-def timestamp(second: int, *, minute: int = 0) -> str:
-	return datetime(2026, 1, 1, 0, minute, second, tzinfo=timezone.utc).isoformat()
+def timestamp(second: int, *, minute: int = 0) -> datetime:
+	return datetime(2026, 1, 1, 0, minute, second, tzinfo=timezone.utc)
 
 
 def test_four_failures_within_window_produce_no_alert():
@@ -43,11 +43,11 @@ def test_four_failures_within_window_produce_no_alert():
 	assert alerts == [None, None, None, None]
 
 
-def test_yearless_syslog_timestamps_trigger_without_unix_timestamp_conversion():
+def test_canonical_datetime_timestamps_trigger_without_rule_parsing():
 	rule = SSHBruteForceRule()
 
 	alerts = [
-		rule.process(make_event(f"Jan  1 00:00:{second:02d}"))
+		rule.process(make_event(timestamp(second)))
 		for second in (0, 10, 20, 30, 40)
 	]
 

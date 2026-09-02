@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from threat_detector.alerts.models import Alert
 from threat_detector.detection.base import DetectionRule
 from threat_detector.detection.engine import DetectionEngine
@@ -20,7 +22,7 @@ class FakeRule(DetectionRule):
 
 def make_event() -> NormalizedEvent:
 	return NormalizedEvent(
-		timestamp="2026-01-01T00:00:00",
+		timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
 		source="test",
 		event_type="test_event",
 		hostname="test-host",
@@ -39,7 +41,7 @@ def make_alert(alert_id: str) -> Alert:
 		severity="low",
 		title=f"Alert {alert_id}",
 		description="Test alert",
-		timestamp="2026-01-01T00:00:00",
+		timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
 		source_ip=None,
 		username=None,
 		evidence=[],

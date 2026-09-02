@@ -1,5 +1,12 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
 from threat_detector.normalization.linux_auth import normalize_linux_event
-from threat_detector.parsers.linux_auth import parse_line
+from threat_detector.parsers.linux_auth import LinuxAuthEvent, parse_line
+
+
+REFERENCE_DATETIME = datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
 
 
 def test_normalize_linux_event_failure():
@@ -12,9 +19,9 @@ def test_normalize_linux_event_failure():
 
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
-    assert normalized.timestamp == "Jan  1 12:34:56"
+    assert normalized.timestamp == datetime(2026, 1, 1, 12, 34, 56, tzinfo=timezone.utc)
     assert normalized.source == "linux_auth"
     assert normalized.service == "ssh"
     assert normalized.event_type == "authentication_failure"
@@ -36,9 +43,9 @@ def test_normalize_linux_event_success():
 
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
-    assert normalized.timestamp == "Jan  1 12:34:56"
+    assert normalized.timestamp == datetime(2026, 1, 1, 12, 34, 56, tzinfo=timezone.utc)
     assert normalized.source == "linux_auth"
     assert normalized.service == "ssh"
     assert normalized.event_type == "authentication_success"
@@ -60,9 +67,9 @@ def test_normalize_linux_event_invalid_user():
 
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
-    assert normalized.timestamp == "Jan  1 12:34:56"
+    assert normalized.timestamp == datetime(2026, 1, 1, 12, 34, 56, tzinfo=timezone.utc)
     assert normalized.source == "linux_auth"
     assert normalized.service == "ssh"
     assert normalized.event_type == "invalid_user"
@@ -89,7 +96,7 @@ def test_normalized_event_contract_source_identifies_parser():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     # source identifies the parser/input origin
     assert normalized.source == "linux_auth"
@@ -108,7 +115,7 @@ def test_normalized_event_contract_service_identifies_protocol():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     # service identifies the service/protocol (separate from source)
     assert normalized.service == "ssh"
@@ -127,7 +134,7 @@ def test_normalized_event_contract_success_true_on_successful_auth():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     assert normalized.event_type == "authentication_success"
     assert normalized.success is True
@@ -144,7 +151,7 @@ def test_normalized_event_contract_success_false_on_failed_auth():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     assert normalized.event_type == "authentication_failure"
     assert normalized.success is False
@@ -161,7 +168,7 @@ def test_normalized_event_contract_success_false_on_invalid_user():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     assert normalized.event_type == "invalid_user"
     assert normalized.success is False
@@ -186,11 +193,12 @@ def test_linux_ssh_normalized_event_required_fields_present():
     event = parse_line(raw)
     assert event is not None
 
-    normalized = normalize_linux_event(event)
+    normalized = normalize_linux_event(event, REFERENCE_DATETIME)
 
     # Guaranteed by Linux SSH normalizer
-    assert normalized.timestamp is not None
-    assert isinstance(normalized.timestamp, str)
+    assert isinstance(normalized.timestamp, datetime)
+    assert normalized.timestamp.tzinfo is not None
+    assert normalized.timestamp.utcoffset() is not None
     assert normalized.source is not None
     assert isinstance(normalized.source, str)
     assert normalized.event_type is not None
@@ -199,3 +207,70 @@ def test_linux_ssh_normalized_event_required_fields_present():
     assert isinstance(normalized.raw, str)
     assert normalized.service is not None
     assert isinstance(normalized.service, str)
+
+
+def test_unsupported_linux_event_type_raises_instead_of_becoming_failure():
+    event = LinuxAuthEvent(
+        timestamp="Jan  1 12:34:56",
+        hostname="server",
+        process="sshd",
+        pid=1234,
+        event_type="unsupported_event",
+        username=None,
+        source_ip=None,
+        source_port=None,
+        raw="raw event",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported Linux auth event type"):
+        normalize_linux_event(event, REFERENCE_DATETIME)
+
+
+def test_linux_timestamp_uses_reference_year_and_is_utc():
+    raw = (
+        "Aug 27 12:34:56 server sshd[1234]: "
+        "Failed password for alice from 192.0.2.10 port 2222"
+    )
+    event = parse_line(raw)
+    assert event is not None
+
+    normalized = normalize_linux_event(
+        event, datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
+    )
+
+    assert normalized.timestamp == datetime(
+        2026, 8, 27, 12, 34, 56, tzinfo=timezone.utc
+    )
+    assert normalized.timestamp.tzinfo is timezone.utc
+    assert normalized.timestamp.utcoffset() == timedelta(0)
+
+
+def test_linux_timestamp_rejects_naive_reference_datetime():
+    raw = (
+        "Aug 27 12:34:56 server sshd[1234]: "
+        "Failed password for alice from 192.0.2.10 port 2222"
+    )
+    event = parse_line(raw)
+    assert event is not None
+
+    with pytest.raises(ValueError, match="reference_datetime must be timezone-aware"):
+        normalize_linux_event(event, datetime(2026, 9, 2, 12))
+
+
+def test_linux_timestamp_from_non_utc_reference_is_converted_to_utc():
+    raw = (
+        "Aug 27 12:34:56 server sshd[1234]: "
+        "Failed password for alice from 192.0.2.10 port 2222"
+    )
+    event = parse_line(raw)
+    assert event is not None
+    reference_datetime = datetime(
+        2026, 9, 2, 12, tzinfo=timezone(timedelta(hours=5, minutes=30))
+    )
+
+    normalized = normalize_linux_event(event, reference_datetime)
+
+    assert normalized.timestamp == datetime(
+        2026, 8, 27, 7, 4, 56, tzinfo=timezone.utc
+    )
+    assert normalized.timestamp.tzinfo is timezone.utc

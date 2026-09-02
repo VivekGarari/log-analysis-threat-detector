@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
 
 def run(dataset: Path, memory: bool = False) -> dict[str, Any]:
 	engine = DetectionEngine([SSHBruteForceRule()])
+	reference_datetime = datetime.now().astimezone()
 	total_events = 0
 	parsed_events = 0
 	alerts_generated = 0
@@ -51,7 +52,7 @@ def run(dataset: Path, memory: bool = False) -> dict[str, Any]:
 			parsed = parse_line(raw_line)
 			if parsed is None:
 				continue
-			event = normalize_linux_event(parsed)
+			event = normalize_linux_event(parsed, reference_datetime)
 			parsed_events += 1
 			alerts_generated += len(engine.process(event))
 	elapsed_seconds = time.perf_counter() - started

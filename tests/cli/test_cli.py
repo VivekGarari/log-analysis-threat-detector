@@ -1,0 +1,163 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from threat_detector.cli import main
+
+
+FIXTURES = Path(__file__).parents[2] / "data" / "fixtures"
+
+
+def linux_line(message: str, second: int = 0) -> str:
+    return (
+        f"Jan  1 00:00:{second:02d} web-01 sshd[1001]: {message}"
+    )
+
+
+def invoke_linux(path: Path, *extra: str) -> int:
+    return main(
+        [
+            "--input",
+            str(path),
+            "--format",
+            "linux-auth",
+            "--reference-time",
+            "2026-09-02T12:00:00+00:00",
+            *extra,
+        ]
+    )
+
+
+def test_help(capsys):
+    with pytest.raises(SystemExit) as error:
+        main(["--help"])
+
+    assert error.value.code == 0
+    assert "--input" in capsys.readouterr().out
+
+
+def test_missing_required_arguments(capsys):
+    with pytest.raises(SystemExit) as error:
+        main([])
+
+    assert error.value.code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [("--format", "unsupported"), ("--output", "unsupported")],
+)
+def test_unsupported_choices_are_argument_errors(tmp_path, capsys, option, value):
+    arguments = ["--input", str(tmp_path / "input.log"), option, value]
+
+    with pytest.raises(SystemExit) as error:
+        main(arguments)
+
+    assert error.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_missing_linux_reference_time(tmp_path, capsys):
+    input_path = tmp_path / "input.log"
+    input_path.write_text(linux_line("Accepted password for alice from 192.0.2.10 port 22"))
+
+    with pytest.raises(SystemExit) as error:
+        main(["--input", str(input_path), "--format", "linux-auth"])
+
+    assert error.value.code == 2
+    assert "--reference-time is required" in capsys.readouterr().err
+
+
+def test_malformed_linux_reference_time(tmp_path, capsys):
+    input_path = tmp_path / "input.log"
+    input_path.write_text(linux_line("Accepted password for alice from 192.0.2.10 port 22"))
+
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "--input",
+                str(input_path),
+                "--format",
+                "linux-auth",
+                "--reference-time",
+                "not-a-time",
+            ]
+        )
+
+    assert error.value.code == 2
+    assert "invalid --reference-time" in capsys.readouterr().err
+
+
+def test_successful_linux_processing_and_text_output(tmp_path, capsys):
+    input_path = tmp_path / "input.log"
+    input_path.write_text(linux_line("Invalid user bob from 192.0.2.10 port 22"))
+
+    assert invoke_linux(input_path) == 0
+
+    output = capsys.readouterr()
+    assert "invalid_user" in output.out
+    assert output.err == ""
+
+
+def test_successful_windows_processing(tmp_path, capsys):
+    output_code = main(
+        [
+            "--input",
+            str(FIXTURES / "windows" / "security_4625.xml"),
+            "--format",
+            "windows-security",
+        ]
+    )
+
+    assert output_code == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_successful_apache_processing(tmp_path, capsys):
+    output_code = main(
+        [
+            "--input",
+            str(FIXTURES / "apache" / "access_combined_200.log"),
+            "--format",
+            "apache-access",
+        ]
+    )
+
+    assert output_code == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_json_output(tmp_path, capsys):
+    input_path = tmp_path / "input.log"
+    input_path.write_text(linux_line("Invalid user bob from 192.0.2.10 port 22"))
+
+    assert invoke_linux(input_path, "--output", "json") == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output[0]["rule_id"] == "invalid_user"
+
+
+def test_input_file_error(capsys):
+    with pytest.raises(SystemExit) as error:
+        main(["--input", "does-not-exist.log", "--format", "apache-access"])
+
+    assert error.value.code == 2
+    assert "input file not found" in capsys.readouterr().err
+
+
+def test_alert_detection_returns_zero(tmp_path, capsys):
+    lines = [
+        linux_line(
+            "Failed password for alice from 203.0.113.50 port 2222", second
+        )
+        for second in (0, 10, 20, 30, 40)
+    ]
+    input_path = tmp_path / "brute-force.log"
+    input_path.write_text("\n".join(lines))
+
+    assert invoke_linux(input_path, "--output", "json") == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output[0]["rule_id"] == "ssh_brute_force"

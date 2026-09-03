@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Microsoft-Windows-Security-Auditing" Guid="{54849625-5478-4994-A5BA-3E3B0328C30D}" />
+    <EventID>4624</EventID>
+    <Version>2</Version>
+    <Level>0</Level>
+    <Task>12544</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8020000000000000</Keywords>
+    <TimeCreated SystemTime="2026-09-02T12:34:56.123456Z" />
+    <EventRecordID>18421</EventRecordID>
+    <Channel>Security</Channel>
+    <Computer>WIN-AUTH-01.example.test</Computer>
+  </System>
+  <EventData>
+    <Data Name="SubjectUserName">-</Data>
+    <Data Name="TargetUserName">alice</Data>
+    <Data Name="LogonType">10</Data>
+    <Data Name="IpAddress">203.0.113.50</Data>
+    <Data Name="IpPort">49832</Data>
+  </EventData>
+</Event>

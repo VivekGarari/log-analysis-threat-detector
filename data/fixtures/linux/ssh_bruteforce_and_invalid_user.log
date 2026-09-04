@@ -1,0 +1,6 @@
+Sep  2 12:00:00 server sshd[1234]: Failed password for alice from 198.51.100.50 port 2201
+Sep  2 12:00:05 server sshd[1234]: Failed password for alice from 198.51.100.50 port 2202
+Sep  2 12:00:10 server sshd[1234]: Failed password for alice from 198.51.100.50 port 2203
+Sep  2 12:00:15 server sshd[1234]: Failed password for alice from 198.51.100.50 port 2204
+Sep  2 12:00:20 server sshd[1234]: Failed password for alice from 198.51.100.50 port 2205
+Sep  2 12:00:25 server sshd[1234]: Invalid user admin from 198.51.100.50 port 2206

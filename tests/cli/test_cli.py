@@ -47,7 +47,7 @@ def test_missing_required_arguments(capsys):
 
 @pytest.mark.parametrize(
     ("option", "value"),
-    [("--format", "unsupported"), ("--output", "unsupported")],
+    [("--format", "nonsense"), ("--output", "unsupported")],
 )
 def test_unsupported_choices_are_argument_errors(tmp_path, capsys, option, value):
     arguments = ["--input", str(tmp_path / "input.log"), option, value]
@@ -60,29 +60,34 @@ def test_unsupported_choices_are_argument_errors(tmp_path, capsys, option, value
 
 
 def test_missing_linux_reference_time(tmp_path, capsys):
-    input_path = tmp_path / "input.log"
-    input_path.write_text(linux_line("Accepted password for alice from 192.0.2.10 port 22"))
-
     with pytest.raises(SystemExit) as error:
-        main(["--input", str(input_path), "--format", "linux-auth"])
+        main(
+            [
+                "--input",
+                str(FIXTURES / "linux" / "password_spraying.log"),
+                "--format",
+                "linux-auth",
+                "--output",
+                "json",
+            ]
+        )
 
     assert error.value.code == 2
     assert "--reference-time is required" in capsys.readouterr().err
 
 
 def test_malformed_linux_reference_time(tmp_path, capsys):
-    input_path = tmp_path / "input.log"
-    input_path.write_text(linux_line("Accepted password for alice from 192.0.2.10 port 22"))
-
     with pytest.raises(SystemExit) as error:
         main(
             [
                 "--input",
-                str(input_path),
+                str(FIXTURES / "linux" / "password_spraying.log"),
                 "--format",
                 "linux-auth",
                 "--reference-time",
-                "not-a-time",
+                "not-a-date",
+                "--output",
+                "json",
             ]
         )
 
@@ -141,7 +146,18 @@ def test_json_output(tmp_path, capsys):
 
 def test_input_file_error(capsys):
     with pytest.raises(SystemExit) as error:
-        main(["--input", "does-not-exist.log", "--format", "apache-access"])
+        main(
+            [
+                "--input",
+                str(FIXTURES / "linux" / "definitely-nonexistent.log"),
+                "--format",
+                "linux-auth",
+                "--reference-time",
+                "2026-09-02T14:00:00+00:00",
+                "--output",
+                "json",
+            ]
+        )
 
     assert error.value.code == 2
     assert "input file not found" in capsys.readouterr().err
@@ -161,3 +177,65 @@ def test_alert_detection_returns_zero(tmp_path, capsys):
 
     output = json.loads(capsys.readouterr().out)
     assert output[0]["rule_id"] == "ssh_brute_force"
+
+
+def test_linux_brute_force_and_invalid_user_fixture(capsys):
+    output_code = main(
+        [
+            "--input",
+            str(FIXTURES / "linux" / "ssh_bruteforce_and_invalid_user.log"),
+            "--format",
+            "linux-auth",
+            "--reference-time",
+            "2026-09-02T14:00:00+00:00",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert output_code == 0
+    alerts = json.loads(capsys.readouterr().out)
+    assert [alert["rule_id"] for alert in alerts] == [
+        "ssh_brute_force",
+        "invalid_user",
+    ]
+    assert len(alerts) == 2
+    assert alerts[0]["severity"] == "high"
+    assert alerts[1]["severity"] == "medium"
+    assert alerts[0]["source_ip"] == "198.51.100.50"
+    assert alerts[0]["username"] == "alice"
+    assert alerts[1]["username"] == "admin"
+    assert len(alerts[0]["evidence"]) == 5
+    assert len(alerts[0]["raw_events"]) == 5
+
+
+def test_linux_password_spraying_fixture(capsys):
+    output_code = main(
+        [
+            "--input",
+            str(FIXTURES / "linux" / "password_spraying.log"),
+            "--format",
+            "linux-auth",
+            "--reference-time",
+            "2026-09-02T14:00:00+00:00",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert output_code == 0
+    alerts = json.loads(capsys.readouterr().out)
+    assert [alert["rule_id"] for alert in alerts] == [
+        "invalid_user",
+        "password_spraying",
+    ]
+    assert len(alerts) == 2
+    password_spraying = alerts[1]
+    assert password_spraying["severity"] == "high"
+    assert password_spraying["source_ip"] == "203.0.113.50"
+    assert password_spraying["username"] is None
+    assert password_spraying["evidence"] == [
+        "Source 203.0.113.50 attempted authentication for 5 distinct "
+        "usernames within 60 seconds: alice, bob, charlie, david, eve."
+    ]
+    assert len(password_spraying["raw_events"]) == 5

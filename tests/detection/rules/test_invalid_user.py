@@ -47,6 +47,25 @@ def test_invalid_user_produces_alert_with_event_context():
     ]
 
 
+def test_alert_id_includes_timestamp_source_ip_and_username():
+    def detect_alert(**overrides):
+        event = make_event(**overrides)
+        alert = InvalidUserRule().process(event)
+        assert alert is not None
+        return alert
+
+    baseline = detect_alert()
+    different_timestamp = detect_alert(
+        timestamp=datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+    )
+    different_source_ip = detect_alert(source_ip="192.0.2.11")
+    different_username = detect_alert(username="unknown61")
+
+    assert baseline.alert_id != different_timestamp.alert_id
+    assert baseline.alert_id != different_source_ip.alert_id
+    assert baseline.alert_id != different_username.alert_id
+
+
 def test_non_invalid_user_events_do_not_trigger():
     rule = InvalidUserRule()
 

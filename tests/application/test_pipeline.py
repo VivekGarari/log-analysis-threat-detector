@@ -87,6 +87,42 @@ def test_parser_returning_none_skips_normalization_and_detection():
     assert engine.received_events == []
 
 
+def test_parser_miss_does_not_stop_later_valid_records():
+    parser_calls: list[str] = []
+    normalizer_calls: list[str] = []
+    alerts = {
+        "first": [make_alert("first")],
+        "last": [make_alert("last")],
+    }
+    engine = RecordingEngine(alerts)
+
+    def parser(record: str) -> str | None:
+        parser_calls.append(record)
+        return None if record == "malformed" else record
+
+    def normalizer(parsed_event: str) -> NormalizedEvent:
+        normalizer_calls.append(parsed_event)
+        return make_event(parsed_event)
+
+    pipeline = DetectionPipeline(parser, normalizer, engine)
+
+    assert pipeline.process(["first", "malformed", "last"]) == [
+        alerts["first"][0],
+        alerts["last"][0],
+    ]
+    assert parser_calls == ["first", "malformed", "last"]
+    assert normalizer_calls == ["first", "last"]
+    assert [event.raw for event in engine.received_events] == ["first", "last"]
+
+
+def test_all_parser_misses_return_no_alerts():
+    engine = RecordingEngine()
+    pipeline = DetectionPipeline(lambda record: None, make_event, engine)
+
+    assert pipeline.process(["malformed-one", "malformed-two"]) == []
+    assert engine.received_events == []
+
+
 def test_multiple_records_and_alerts_preserve_input_and_alert_order():
     first = make_alert("first")
     second = make_alert("second")
@@ -109,6 +145,58 @@ def test_empty_input_returns_empty_list():
 
     assert pipeline.process([]) == []
     assert engine.received_events == []
+
+
+def test_normalizer_exception_propagates_without_calling_engine():
+    engine = RecordingEngine()
+
+    def normalizer(parsed_event: str) -> NormalizedEvent:
+        raise ValueError(f"invalid {parsed_event}")
+
+    pipeline = DetectionPipeline(lambda record: record, normalizer, engine)
+
+    try:
+        pipeline.process(["record"])
+    except ValueError as error:
+        assert str(error) == "invalid record"
+    else:
+        raise AssertionError("expected normalizer exception to propagate")
+
+    assert engine.received_events == []
+
+
+def test_pipeline_state_carries_across_process_calls():
+    from datetime import timedelta
+
+    from threat_detector.detection.rules.ssh_brute_force import SSHBruteForceRule
+
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = {
+        str(second): NormalizedEvent(
+            timestamp=base + timedelta(seconds=second),
+            source="linux_auth",
+            event_type="authentication_failure",
+            hostname="server",
+            username="alice",
+            source_ip="192.0.2.10",
+            source_port=22,
+            success=False,
+            raw=str(second),
+            service="ssh",
+        )
+        for second in (0, 10, 20, 30, 40)
+    }
+    pipeline = DetectionPipeline(
+        lambda record: record,
+        events.__getitem__,
+        DetectionEngine([SSHBruteForceRule()]),
+    )
+
+    assert pipeline.process(["0", "10", "20", "30"]) == []
+    alerts = pipeline.process(["40"])
+
+    assert len(alerts) == 1
+    assert alerts[0].rule_id == "ssh_brute_force"
 
 
 def test_normalizer_wrapper_can_supply_linux_reference_datetime():

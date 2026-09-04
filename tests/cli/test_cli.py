@@ -144,6 +144,17 @@ def test_json_output(tmp_path, capsys):
     assert output[0]["rule_id"] == "invalid_user"
 
 
+def test_zero_alerts_return_success_and_empty_json_output(tmp_path, capsys):
+    input_path = tmp_path / "no-detections.log"
+    input_path.write_text("not a valid Linux authentication record")
+
+    assert invoke_linux(input_path, "--output", "json") == 0
+
+    output = capsys.readouterr()
+    assert json.loads(output.out) == []
+    assert output.err == ""
+
+
 def test_input_file_error(capsys):
     with pytest.raises(SystemExit) as error:
         main(

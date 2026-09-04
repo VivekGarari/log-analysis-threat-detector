@@ -65,6 +65,88 @@ def test_five_distinct_authentication_failures_trigger():
     assert alerts[4] is not None
 
 
+def test_alert_id_is_independent_of_username_event_order():
+    def detect_alert(usernames: list[str]):
+        rule = PasswordSprayingRule()
+        alert = None
+        for event in events_for_usernames(usernames):
+            alert = rule.process(event)
+        assert alert is not None
+        return alert
+
+    first_alert = detect_alert(["alice", "bob", "carol", "dave", "erin"])
+    second_alert = detect_alert(["erin", "dave", "carol", "bob", "alice"])
+
+    assert first_alert.alert_id == second_alert.alert_id
+
+
+def test_alert_id_includes_the_distinct_username_set():
+    def detect_alert(usernames: list[str]):
+        rule = PasswordSprayingRule()
+        alert = None
+        for event in events_for_usernames(usernames):
+            alert = rule.process(event)
+        assert alert is not None
+        return alert
+
+    baseline = detect_alert(["alice", "bob", "carol", "dave", "erin"])
+    different_user_set = detect_alert(["alice", "bob", "carol", "dave", "frank"])
+
+    assert baseline.username is None
+    assert baseline.alert_id != different_user_set.alert_id
+
+
+def test_four_distinct_usernames_do_not_trigger():
+    rule = PasswordSprayingRule()
+
+    alerts = [
+        rule.process(event)
+        for event in events_for_usernames(["alice", "bob", "carol", "dave"])
+    ]
+
+    assert alerts == [None, None, None, None]
+
+
+def test_distinct_username_at_exactly_sixty_second_boundary_still_counts():
+    rule = PasswordSprayingRule()
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    alerts = [
+        rule.process(
+            make_event(
+                username,
+                timestamp=base + timedelta(seconds=second),
+            )
+        )
+        for username, second in zip(
+            ["alice", "bob", "carol", "dave", "erin"],
+            [0, 10, 20, 30, 60],
+        )
+    ]
+
+    assert alerts[-1] is not None
+
+
+def test_distinct_username_just_beyond_sixty_second_window_does_not_count():
+    rule = PasswordSprayingRule()
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    alerts = [
+        rule.process(
+            make_event(
+                username,
+                timestamp=base + timedelta(seconds=second),
+            )
+        )
+        for username, second in zip(
+            ["alice", "bob", "carol", "dave", "erin"],
+            [0, 10, 20, 30, 61],
+        )
+    ]
+
+    assert alerts == [None, None, None, None, None]
+
+
 def test_five_distinct_invalid_users_trigger():
     rule = PasswordSprayingRule()
 
@@ -210,6 +292,25 @@ def test_expiration_allows_a_later_independent_alert():
     alerts = [rule.process(event) for event in second_events]
 
     assert alerts[-1] is not None
+
+
+def test_usernames_from_expired_window_do_not_contribute_to_later_alert():
+    rule = PasswordSprayingRule()
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    first_alerts = [
+        rule.process(make_event(username, timestamp=base))
+        for username in ["alice", "bob", "carol", "dave", "erin"]
+    ]
+    assert first_alerts[-1] is not None
+
+    later = base + timedelta(seconds=61)
+    later_alerts = [
+        rule.process(make_event(username, timestamp=later))
+        for username in ["alice", "bob", "carol", "dave"]
+    ]
+
+    assert later_alerts == [None, None, None, None]
 
 
 def test_out_of_order_events_inside_window_are_accepted():

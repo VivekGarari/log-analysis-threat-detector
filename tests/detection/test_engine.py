@@ -20,6 +20,16 @@ class FakeRule(DetectionRule):
 		return self.result
 
 
+class RaisingRule(FakeRule):
+	def __init__(self, error: Exception) -> None:
+		super().__init__(None)
+		self.error = error
+
+	def process(self, event: NormalizedEvent) -> Alert | None:
+		self.received_events.append(event)
+		raise self.error
+
+
 def make_event() -> NormalizedEvent:
 	return NormalizedEvent(
 		timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -88,3 +98,43 @@ def test_multiple_rules_receive_the_same_event():
 	assert second_rule.received_events == [event]
 	assert first_rule.received_events[0] is event
 	assert second_rule.received_events[0] is event
+
+
+def test_rule_exception_stops_later_rules_and_propagates():
+	event = make_event()
+	first_rule = FakeRule(None)
+	failing_rule = RaisingRule(RuntimeError("rule failed"))
+	later_rule = FakeRule(None)
+
+	try:
+		DetectionEngine([first_rule, failing_rule, later_rule]).process(event)
+	except RuntimeError as error:
+		assert str(error) == "rule failed"
+	else:
+		raise AssertionError("expected rule exception to propagate")
+
+	assert first_rule.received_events == [event]
+	assert failing_rule.received_events == [event]
+	assert later_rule.received_events == []
+
+
+def test_duplicate_rule_ids_are_dispatched_in_registration_order():
+	first_alert = make_alert("first")
+	second_alert = make_alert("second")
+	first_rule = FakeRule(first_alert)
+	second_rule = FakeRule(second_alert)
+
+	result = DetectionEngine([first_rule, second_rule]).process(make_event())
+
+	assert result == [first_alert, second_alert]
+	assert first_rule.received_events == [make_event()]
+	assert second_rule.received_events == [make_event()]
+
+
+def test_same_rule_instance_is_dispatched_once_per_registration():
+	rule = FakeRule(None)
+	event = make_event()
+
+	assert DetectionEngine([rule, rule]).process(event) == []
+
+	assert rule.received_events == [event, event]

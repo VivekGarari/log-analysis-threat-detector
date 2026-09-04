@@ -11,6 +11,7 @@ def make_event(
     service: str = "ssh",
     event_type: str = "authentication_failure",
     source_ip: str | None = "192.0.2.10",
+	username: str = "alice",
     success: bool | None = False,
     raw: str | None = None,
 ) -> NormalizedEvent:
@@ -19,7 +20,7 @@ def make_event(
         source=source,
         event_type=event_type,
         hostname="server",
-        username="alice",
+		username=username,
         source_ip=source_ip,
         source_port=22,
         success=success,
@@ -64,6 +65,74 @@ def test_fifth_failure_produces_one_alert():
 	]
 
 	assert sum(alert is not None for alert in alerts) == 1
+	assert alerts[-1] is not None
+
+
+def test_replaying_same_detection_produces_same_alert_id():
+	def detect_alert():
+		rule = SSHBruteForceRule()
+		alert = None
+		for second in (0, 10, 20, 30, 40):
+			alert = rule.process(make_event(timestamp(second)))
+		assert alert is not None
+		return alert
+
+	first_alert = detect_alert()
+	second_alert = detect_alert()
+
+	assert first_alert.alert_id == second_alert.alert_id
+
+
+def test_alert_id_includes_triggering_timestamp_and_source_ip():
+	def detect_alert(source_ip: str, trigger_second: int):
+		rule = SSHBruteForceRule()
+		for second in (0, 10, 20, 30):
+			rule.process(make_event(timestamp(second), source_ip=source_ip))
+		alert = rule.process(
+			make_event(timestamp(trigger_second), source_ip=source_ip)
+		)
+		assert alert is not None
+		return alert
+
+	baseline = detect_alert("192.0.2.10", 40)
+	different_timestamp = detect_alert("192.0.2.10", 41)
+	different_source_ip = detect_alert("192.0.2.11", 40)
+
+	assert baseline.timestamp == timestamp(40)
+	assert baseline.alert_id != different_timestamp.alert_id
+	assert baseline.alert_id != different_source_ip.alert_id
+
+
+def test_failure_at_exactly_sixty_second_boundary_still_counts():
+	rule = SSHBruteForceRule()
+
+	alerts = [
+		rule.process(make_event(timestamp(second, minute=minute)))
+		for minute, second in ((0, 0), (0, 10), (0, 20), (0, 30), (1, 0))
+	]
+
+	assert alerts[-1] is not None
+
+
+def test_failure_just_beyond_sixty_second_window_does_not_count():
+	rule = SSHBruteForceRule()
+
+	alerts = [
+		rule.process(make_event(timestamp(second, minute=minute)))
+		for minute, second in ((0, 0), (0, 10), (0, 20), (0, 30), (1, 1))
+	]
+
+	assert alerts == [None, None, None, None, None]
+
+
+def test_interleaved_usernames_do_not_change_ip_based_counting():
+	rule = SSHBruteForceRule()
+
+	alerts = [
+		rule.process(make_event(timestamp(index), username=username))
+		for index, username in enumerate(["alice", "bob", "carol", "dave", "erin"])
+	]
+
 	assert alerts[-1] is not None
 
 

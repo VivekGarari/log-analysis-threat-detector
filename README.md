@@ -41,6 +41,10 @@ Detection Rules
    ↓
 Alert[]
    ↓
+CorrelationEngine
+   ↓
+Finding[]
+   ↓
 Reporter
    ├── Human-readable text
    └── JSON
@@ -176,6 +180,8 @@ The reporting layer currently supports:
 * Human-readable text
 * JSON
 
+Alerts are instantaneous detection results. Findings are separate correlation results that combine structured alert and normalized-event evidence. V1 correlates an SSH brute-force alert with a later successful SSH authentication from the same source IP within an inclusive 180-second event-time window. See [`docs/correlation.md`](docs/correlation.md) for the exact semantics and limitations.
+
 ## CLI
 
 The current application can process supported log formats through the command line.
@@ -216,7 +222,7 @@ The project has an automated regression suite covering:
 * CLI behavior
 * End-to-end fixture-based detection
 
-The current suite contains **140 passing tests**.
+The current suite contains **177 passing tests**.
 
 Detection behavior that is important to the system is covered by regression tests and documented in the project documentation.
 
@@ -227,6 +233,7 @@ Detailed engineering and behavioral documentation is maintained separately from 
 * [`Detection Rule Semantics`](docs/detection-rules.md) — stateful detection windows, watermark behavior, grouping, duplicate handling, suppression, expiration, and out-of-order events.
 * [`Alert Semantics`](docs/alert-semantics.md) — detection snapshots, timestamp meaning, deterministic identity, rule suppression, and deferred persistence decisions.
 * [`Detection Engine and Pipeline`](docs/detection-engine.md) — dispatch order, fail-fast errors, parser misses, and continuing stream state.
+* [`Correlation Semantics`](docs/correlation.md) — the V1 credential attack success scenario, event-time state, evidence, and deterministic identity.
 
 Additional documentation will be added as the architecture develops.
 

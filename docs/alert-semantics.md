@@ -2,9 +2,9 @@
 
 This document records the current contract for `Alert` objects. It describes the detection output that exists today and intentionally does not define persistence or incident-management behavior.
 
-## Alert as a Detection Finding
+## Alert as an Instantaneous Detection Result
 
-An `Alert` currently represents an instantaneous detection finding or snapshot. It records why a detection rule emitted a finding at a particular event timestamp.
+An `Alert` currently represents an instantaneous detection result or snapshot. It records why a detection rule emitted an alert at a particular event timestamp.
 
 It is not currently an incident or a lifecycle-managed object. An `Alert` has no active, acknowledged, resolved, or closed state; no lifecycle timestamps; and no update, acknowledgment, resolution, or incident relationship API.
 
@@ -42,6 +42,14 @@ Suppression does not update, extend, resolve, or otherwise change an existing `A
 Detection rules operate independently. Separate rules may emit separate alerts for overlapping activity, even when the alerts describe the same underlying events.
 
 These findings retain their own rule identities and are not globally deduplicated by `DetectionEngine`.
+
+## Finding as a Correlation Result
+
+A `Finding` is a separate, additive result produced by the correlation layer. It combines structured evidence from alerts and normalized events; it is not another name for an `Alert` and does not change Alert semantics.
+
+V1 supports `credential_attack_success`: an `ssh_brute_force` alert followed by successful SSH authentication from the same source IP within an inclusive 180-second event-time window. Username matching is not required. The successful event supplies the Finding timestamp, source IP, and username.
+
+Correlation state belongs to one `CorrelationEngine` instance. Its watermark is the greatest normalized event timestamp observed, and alerts expire when they are more than 180 seconds behind that watermark. Late successful events can correlate when they remain within the event-time horizon, while a late brute-force alert does not retroactively correlate with a success already processed. Findings preserve contributing objects and deterministic raw-event ordering.
 
 ## Future Persistence
 

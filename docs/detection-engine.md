@@ -35,6 +35,8 @@ raw record
 → NormalizedEvent
 → DetectionEngine
 → collected alerts
+→ CorrelationEngine (when configured)
+→ collected findings
 ```
 
 The pipeline owns this parser-to-normalizer-to-engine sequencing:
@@ -47,6 +49,8 @@ The pipeline owns this parser-to-normalizer-to-engine sequencing:
 * Empty input and input containing only parser misses produce an empty alert list.
 
 The pipeline does not sort, buffer, deduplicate, or duplicate records. Input order is preserved through normalization and engine processing. Alerts preserve input event order, and alerts from one event preserve engine rule registration order.
+
+`DetectionPipeline.process()` continues to return `list[Alert]` for compatibility. A pipeline configured with a `CorrelationEngine` can use `process_with_findings()` to receive a `ProcessingResult` containing both `alerts` and `findings`. Correlation occurs immediately after detection for each normalized event.
 
 ## Ordering
 

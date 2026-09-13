@@ -37,6 +37,7 @@ def test_normalize_successful_windows_security_logon():
     assert normalized.source_ip == "203.0.113.50"
     assert normalized.source_port == 49832
     assert normalized.raw == raw
+    assert normalized.http_path is None
 
 
 def test_normalize_failed_windows_security_logon_with_missing_network_values():
@@ -53,6 +54,7 @@ def test_normalize_failed_windows_security_logon_with_missing_network_values():
     assert normalized.username == "alice"
     assert normalized.source_ip is None
     assert normalized.source_port is None
+    assert normalized.http_path is None
 
 
 def test_normalize_rejects_unsupported_event_id():

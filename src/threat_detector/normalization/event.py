@@ -14,3 +14,4 @@ class NormalizedEvent:
     success: bool | None
     raw: str
     service: str | None = None
+    http_path: str | None = None

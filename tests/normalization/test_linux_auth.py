@@ -31,6 +31,7 @@ def test_normalize_linux_event_failure():
     assert normalized.source_port == 2222
     assert normalized.success is False
     assert normalized.raw == raw
+    assert normalized.http_path is None
 
 
 def test_normalize_linux_event_success():
@@ -55,6 +56,7 @@ def test_normalize_linux_event_success():
     assert normalized.source_port == 2222
     assert normalized.success is True
     assert normalized.raw == raw
+    assert normalized.http_path is None
 
 
 def test_normalize_linux_event_invalid_user():
@@ -79,6 +81,7 @@ def test_normalize_linux_event_invalid_user():
     assert normalized.source_port == 2238
     assert normalized.success is False
     assert normalized.raw == raw
+    assert normalized.http_path is None
 
 
 # Contract tests: explicitly document and protect NormalizedEvent semantics

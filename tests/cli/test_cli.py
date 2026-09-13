@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from threat_detector.cli import main
+from threat_detector.detection.rules.web_reconnaissance import WebReconnaissanceRule
 
 
 FIXTURES = Path(__file__).parents[2] / "data" / "fixtures"
@@ -132,6 +133,36 @@ def test_successful_apache_processing(tmp_path, capsys):
 
     assert output_code == 0
     assert capsys.readouterr().err == ""
+
+
+def test_apache_web_reconnaissance_detection(tmp_path, capsys):
+    lines = [
+        f'203.0.113.10 - alice [02/Sep/2026:12:40:{i:02d} +0000] "GET {path} HTTP/1.1" 200 512 "https://example.com" "Mozilla/5.0"'
+        for i, path in enumerate(["/admin", "/wp-admin", "/phpmyadmin", "/.env", "/server-status"])
+    ]
+    input_path = tmp_path / "recon.log"
+    input_path.write_text("\n".join(lines))
+
+    output_code = main(
+        [
+            "--input",
+            str(input_path),
+            "--format",
+            "apache-access",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert output_code == 0
+    alerts = json.loads(capsys.readouterr().out)
+    assert len(alerts) == 1
+    assert alerts[0]["rule_id"] == "web_reconnaissance"
+    assert alerts[0]["severity"] == "medium"
+    assert alerts[0]["source_ip"] == "203.0.113.10"
+    assert alerts[0]["username"] is None
+    assert len(alerts[0]["evidence"]) == 5
+    assert len(alerts[0]["raw_events"]) == 5
 
 
 def test_json_output(tmp_path, capsys):

@@ -27,6 +27,8 @@ For stateful rules, the timestamp is the triggering event timestamp within the e
 
 The current identity is useful for in-memory processing and reporting. It is not guaranteed to be globally unique and should not yet be treated as a database primary key.
 
+For Web Reconnaissance alerts, the normalized suspicious paths embedded in the alert identity, human-readable evidence, and raw event evidence use one deterministic sorted order.
+
 Replacing the current rule-generated IDs with UUIDs has intentionally not been done. No UUID requirement has been established at the current project stage.
 
 ## Rule Suppression vs Alert Lifecycle

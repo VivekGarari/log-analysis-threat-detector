@@ -32,6 +32,7 @@ def test_normalize_apache_access_event():
     assert normalized.success is None
     assert normalized.raw == raw
     assert normalized.service == "http"
+    assert normalized.http_path == "/health"
 
 
 def test_normalize_rejects_invalid_timestamp():

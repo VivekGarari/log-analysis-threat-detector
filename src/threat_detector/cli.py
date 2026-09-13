@@ -9,6 +9,7 @@ from threat_detector.detection.engine import DetectionEngine
 from threat_detector.detection.rules.invalid_user import InvalidUserRule
 from threat_detector.detection.rules.password_spraying import PasswordSprayingRule
 from threat_detector.detection.rules.ssh_brute_force import SSHBruteForceRule
+from threat_detector.detection.rules.web_reconnaissance import WebReconnaissanceRule
 from threat_detector.ingestion.reader import read_log_file
 from threat_detector.normalization.apache_access import normalize_apache_access_event
 from threat_detector.normalization.linux_auth import normalize_linux_event
@@ -59,7 +60,7 @@ def _build_pipeline(
     reference_time: datetime | None,
 ) -> DetectionPipeline:
     engine = DetectionEngine(
-        [SSHBruteForceRule(), InvalidUserRule(), PasswordSprayingRule()]
+        [SSHBruteForceRule(), InvalidUserRule(), PasswordSprayingRule(), WebReconnaissanceRule()]
     )
 
     if record_format == "linux-auth":

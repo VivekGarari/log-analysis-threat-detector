@@ -75,7 +75,7 @@ Currently supports:
 
 ### Apache Access Logs
 
-Supports Apache Combined Log Format access records and normalizes them into HTTP access events.
+Supports Apache Combined Log Format access records and normalizes them into HTTP access events. The request path is preserved as `http_path` in the canonical event model for use by detection rules.
 
 ## Normalized Event Model
 
@@ -92,7 +92,8 @@ NormalizedEvent
 ├── source_port
 ├── success
 ├── raw
-└── service
+├── service
+└── http_path
 ```
 
 The canonical timestamp is timezone-aware and normalized to UTC.
@@ -100,6 +101,8 @@ The canonical timestamp is timezone-aware and normalized to UTC.
 `event_type` represents the common security meaning of an event, while `source` identifies the ingestion origin and `service` represents service/protocol semantics.
 
 Source-specific fields that are not currently required by common detection logic remain in their format-specific event models.
+
+`http_path` is populated by the Apache access log normalizer and is available to detection rules for web reconnaissance detection.
 
 ## Current Detection Rules
 
@@ -135,6 +138,22 @@ Current contract:
 * Repeated attempts for the same username do not increase the distinct-user count
 * Both `authentication_failure` and `invalid_user` events qualify
 * One alert is emitted per active attack window and source IP
+
+### Web Reconnaissance
+
+Detects web reconnaissance and probing activity from a single source IP by identifying requests for multiple distinct suspicious HTTP paths within a short time window.
+
+Current contract:
+
+* Threshold: 5 distinct suspicious paths
+* Window: 60 seconds
+* Grouping: source IP
+* Repeated requests for the same suspicious path do not increase the distinct-path count
+* Path normalization strips query strings before matching; case is normalized
+* Suspicious paths are identified by a curated V1 signature (administrative interfaces, CMS admin paths, config/secrets files, version control metadata, server status endpoints, CGI paths, backup/database files, and shell/webshell probes)
+* Alerts are suppressed while the source IP remains at threshold or above; suppression clears when expiration reduces active state below threshold, allowing a later re-alert
+* Alert identity, evidence, and raw event evidence use the same sorted normalized-path order
+* Severity: medium
 
 Detailed detection contracts are documented in [`docs/detection-rules.md`](docs/detection-rules.md).
 

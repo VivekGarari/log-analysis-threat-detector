@@ -26,4 +26,5 @@ def normalize_apache_access_event(event: ApacheAccessEvent) -> NormalizedEvent:
         success=None,
         raw=event.raw,
         service="http",
+        http_path=event.path,
     )

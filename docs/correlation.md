@@ -30,3 +30,29 @@ credential_attack_success:<source_ip>:<alert_id>:<success_timestamp_iso>:<sha256
 ```
 
 The Finding communicates elevated compromise risk and does not claim that compromise is proven. Future correlation scenarios should remain explicit rather than turning this small layer into a generic query or graph system.
+
+## V2 Scenario: Reconnaissance → Credential Attack
+
+The correlation layer also implements a second, independent scenario:
+
+```text
+web_reconnaissance alert
+→ password_spraying alert
+→ same source IP
+→ recon_timestamp < spray_timestamp <= recon_timestamp + 180 seconds
+→ reconnaissance_credential_attack Finding
+```
+
+Both stages are `Alert` objects (not raw events); neither `web_reconnaissance` nor `password_spraying` alerts carry a structured username, so correlation is keyed on `source_ip` alone. The password-spraying alert timestamp must be strictly later than the reconnaissance alert timestamp; equal timestamps do not correlate. The 180-second upper boundary is inclusive and reuses the same `CORRELATION_WINDOW` constant as the V1 scenario.
+
+Reconnaissance alerts are retained per source IP and expire using the same watermark-driven mechanism as V1 brute-force alerts (the greatest observed `NormalizedEvent.timestamp` is the watermark; a reconnaissance alert expires once it is more than 180 seconds behind the watermark). A password-spraying alert processed before any qualifying reconnaissance alert is retained produces no Finding, and this is not revisited later: a reconnaissance alert that arrives after a spraying alert has already been evaluated does not retroactively correlate with it. When several eligible reconnaissance alerts exist for one source IP, the most recent is selected using the same `(timestamp, alert_id)` deterministic rule as V1. Each qualifying password-spraying alert is evaluated independently and may produce its own Finding; V1 does not deduplicate or globally suppress repeated Findings.
+
+The Finding identity is deterministic and does not require a hash, because both contributing alert IDs are already deterministic:
+
+```text
+reconnaissance_credential_attack:<source_ip>:<recon_alert_id>:<spray_alert_id>
+```
+
+`Finding.timestamp` and `Finding.source_ip` come from the password-spraying alert. `Finding.username` is `None`: a password-spraying alert inherently spans multiple usernames, and V1 does not collapse that into a single identity. `contributing_alerts` is `(recon_alert, spray_alert)`; `contributing_events` is empty, since the correlation is Alert-to-Alert and the individual normalized events behind each alert are not retained. `raw_events` is the reconnaissance alert's raw events followed by the spraying alert's raw events. Evidence is built only from structured `Alert` fields (IDs, source IP, existing `description` text) and never parses `Alert.raw_events` or `NormalizedEvent.raw`.
+
+**This Finding is a co-occurrence signal, not proof of an attack chain.** It indicates only that reconnaissance and password-spraying activity were both observed from the same source IP within the time window. It does not prove that the reconnaissance caused or informed the password spraying, that the same human operated both, or that any authentication succeeded or any account was compromised. Source IP alone is not attacker identity. This is intentionally weaker evidence than the V1 `credential_attack_success` scenario, which correlates against an actual successful authentication event.

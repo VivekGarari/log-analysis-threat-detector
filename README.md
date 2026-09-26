@@ -222,7 +222,7 @@ The project has an automated regression suite covering:
 * CLI behavior
 * End-to-end fixture-based detection
 
-The current suite contains **192 passing tests**.
+The current suite contains **228 passing tests**.
 
 Detection behavior that is important to the system is covered by regression tests and documented in the project documentation.
 
@@ -234,6 +234,7 @@ Detailed engineering and behavioral documentation is maintained separately from 
 * [`Alert Semantics`](docs/alert-semantics.md) — detection snapshots, timestamp meaning, deterministic identity, rule suppression, and deferred persistence decisions.
 * [`Detection Engine and Pipeline`](docs/detection-engine.md) — dispatch order, fail-fast errors, parser misses, and continuing stream state.
 * [`Correlation Semantics`](docs/correlation.md) — the V1 credential attack success scenario and the reconnaissance-to-credential-attack scenario, event-time state, evidence, and deterministic identity.
+* [`Persistence`](docs/persistence.md) — the SQLite schema, identity strategy, and replay behavior for storing NormalizedEvents, Alerts, and Findings.
 
 Additional documentation will be added as the architecture develops.
 

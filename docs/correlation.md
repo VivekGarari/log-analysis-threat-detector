@@ -56,3 +56,13 @@ reconnaissance_credential_attack:<source_ip>:<recon_alert_id>:<spray_alert_id>
 `Finding.timestamp` and `Finding.source_ip` come from the password-spraying alert. `Finding.username` is `None`: a password-spraying alert inherently spans multiple usernames, and V1 does not collapse that into a single identity. `contributing_alerts` is `(recon_alert, spray_alert)`; `contributing_events` is empty, since the correlation is Alert-to-Alert and the individual normalized events behind each alert are not retained. `raw_events` is the reconnaissance alert's raw events followed by the spraying alert's raw events. Evidence is built only from structured `Alert` fields (IDs, source IP, existing `description` text) and never parses `Alert.raw_events` or `NormalizedEvent.raw`.
 
 **This Finding is a co-occurrence signal, not proof of an attack chain.** It indicates only that reconnaissance and password-spraying activity were both observed from the same source IP within the time window. It does not prove that the reconnaissance caused or informed the password spraying, that the same human operated both, or that any authentication succeeded or any account was compromised. Source IP alone is not attacker identity. This is intentionally weaker evidence than the V1 `credential_attack_success` scenario, which correlates against an actual successful authentication event.
+
+## Investigation Projection
+
+`Finding` is the correlation layer's output and remains the source of truth. `threat_detector.investigation` adds a strictly downstream, read-only projection on top of it: `build_finding_view(finding)` returns a `FindingView` containing the Finding's own summary fields, a chronological `FindingTimeline`, and a deduplicated set of `EntityRef` entities (`source_ip`/`username`).
+
+The timeline is built only from `Finding.contributing_alerts` and `Finding.contributing_events` — one `TimelineEntry` per contributing object, ordered by timestamp (alerts before events on a tie). Raw log strings (`Alert.raw_events`, `NormalizedEvent.raw`, `Finding.raw_events`) are deliberately excluded from timeline construction; they are never parsed by this layer.
+
+Because `password_spraying` alerts do not currently carry a structured list of the usernames they observed (`Alert.username` is `None` for that rule), the investigation layer cannot yet represent those usernames as entities. This is a known data-model gap, not something the investigation layer works around by parsing `evidence` or `description` text.
+
+The investigation model does not alter detection or correlation behavior, add persistence, or introduce risk scoring, MITRE mapping, or case-management concepts — it is a pure projection of an existing `Finding`.

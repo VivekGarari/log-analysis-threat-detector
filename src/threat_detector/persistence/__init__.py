@@ -1,7 +1,9 @@
 from threat_detector.persistence.repository import (
+    FindingSummary,
     load_alert,
     load_finding,
     load_normalized_event,
+    list_findings,
     save_alert,
     save_finding,
     save_normalized_event,
@@ -17,4 +19,6 @@ __all__ = [
     "load_alert",
     "save_finding",
     "load_finding",
+    "FindingSummary",
+    "list_findings",
 ]

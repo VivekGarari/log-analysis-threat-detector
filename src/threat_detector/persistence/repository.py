@@ -1,15 +1,51 @@
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from threat_detector.alerts.models import Alert
 from threat_detector.correlation.models import Finding
 from threat_detector.normalization.event import NormalizedEvent
 
 
+@dataclass(frozen=True)
+class FindingSummary:
+    finding_pk: int
+    finding_id: str
+    finding_type: str
+    severity: str
+    title: str
+    timestamp: datetime
+    source_ip: str | None
+    username: str | None
+
+
+_UTC_EPOCH = datetime(1970, 1, 1)
+
+
+def _timestamp_utc_microseconds(value: str | datetime) -> int:
+    timestamp = datetime.fromisoformat(value) if isinstance(value, str) else value
+    offset = timestamp.utcoffset()
+    if timestamp.tzinfo is not None and offset is None:
+        raise ValueError("Timestamp timezone offset is invalid")
+    if offset is None:
+        offset = timedelta(0)
+
+    delta = timestamp.replace(tzinfo=None) - _UTC_EPOCH
+    local_microseconds = (
+        (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+    )
+    offset_microseconds = (
+        (offset.days * 86_400 + offset.seconds) * 1_000_000 + offset.microseconds
+    )
+    return local_microseconds - offset_microseconds
+
+
 def _timestamp_to_text(timestamp: datetime) -> str:
-    return timestamp.isoformat()
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError("Persisted timestamps must be timezone-aware")
+    return timestamp.astimezone(timezone.utc).isoformat()
 
 
 def _timestamp_from_text(value: str) -> datetime:
@@ -225,3 +261,77 @@ def load_finding(connection: sqlite3.Connection, finding_pk: int) -> Finding:
         contributing_events=contributing_events,
         raw_events=_decode_strings(row["raw_events"]),
     )
+
+
+def list_findings(
+    connection: sqlite3.Connection,
+    *,
+    severity: str | None = None,
+    finding_type: str | None = None,
+    source_ip: str | None = None,
+    from_timestamp: datetime | None = None,
+    to_timestamp: datetime | None = None,
+    cursor: tuple[datetime, int] | None = None,
+    limit: int = 50,
+) -> list[FindingSummary]:
+    connection.create_function(
+        "timestamp_utc_microseconds",
+        1,
+        _timestamp_utc_microseconds,
+        deterministic=True,
+    )
+    conditions: list[str] = []
+    parameters: list[object] = []
+
+    if severity is not None:
+        conditions.append("severity = ?")
+        parameters.append(severity)
+    if finding_type is not None:
+        conditions.append("finding_type = ?")
+        parameters.append(finding_type)
+    if source_ip is not None:
+        conditions.append("source_ip = ?")
+        parameters.append(source_ip)
+    if from_timestamp is not None:
+        conditions.append("timestamp_utc_microseconds(timestamp) >= ?")
+        parameters.append(_timestamp_utc_microseconds(from_timestamp))
+    if to_timestamp is not None:
+        conditions.append("timestamp_utc_microseconds(timestamp) < ?")
+        parameters.append(_timestamp_utc_microseconds(to_timestamp))
+    if cursor is not None:
+        cursor_timestamp, cursor_finding_pk = cursor
+        cursor_microseconds = _timestamp_utc_microseconds(cursor_timestamp)
+        conditions.append(
+            "(timestamp_utc_microseconds(timestamp) < ? "
+            "OR (timestamp_utc_microseconds(timestamp) = ? AND finding_pk < ?))"
+        )
+        parameters.extend(
+            (cursor_microseconds, cursor_microseconds, cursor_finding_pk)
+        )
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = connection.execute(
+        f"""
+        SELECT finding_pk, finding_id, finding_type, severity, title,
+               timestamp, source_ip, username
+        FROM findings
+        {where_clause}
+        ORDER BY timestamp_utc_microseconds(timestamp) DESC, finding_pk DESC
+        LIMIT ?
+        """,
+        (*parameters, limit + 1),
+    ).fetchall()
+
+    return [
+        FindingSummary(
+            finding_pk=row["finding_pk"],
+            finding_id=row["finding_id"],
+            finding_type=row["finding_type"],
+            severity=row["severity"],
+            title=row["title"],
+            timestamp=_timestamp_from_text(row["timestamp"]),
+            source_ip=row["source_ip"],
+            username=row["username"],
+        )
+        for row in rows
+    ]

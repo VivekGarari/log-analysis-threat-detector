@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+import threat_detector.persistence.repository as repository
 from threat_detector.alerts.models import Alert
 from threat_detector.correlation.models import Finding
 from threat_detector.investigation.view import build_finding_view
@@ -11,6 +12,7 @@ from threat_detector.persistence.repository import (
     load_alert,
     load_finding,
     load_normalized_event,
+    list_findings,
     save_alert,
     save_finding,
     save_normalized_event,
@@ -283,6 +285,48 @@ def test_timestamp_round_trips_as_timezone_aware_utc(conn):
     assert loaded.timestamp.tzinfo is not None
     assert loaded.timestamp.utcoffset() == timedelta(0)
     assert loaded.timestamp == event.timestamp
+
+
+def test_timestamp_with_offset_is_normalized_to_utc(conn):
+    event = make_event()
+    event.timestamp = datetime(2026, 1, 1, 5, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+
+    event_pk = save_normalized_event(conn, event)
+    loaded = load_normalized_event(conn, event_pk)
+
+    assert loaded.timestamp.tzinfo is timezone.utc
+    assert loaded.timestamp == datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_list_findings_uses_summary_projection_and_deterministic_keyset(conn):
+    first_pk = save_finding(conn, make_finding(finding_id="duplicate", offset=1))
+    second_pk = save_finding(conn, make_finding(finding_id="duplicate", offset=1))
+    older_pk = save_finding(conn, make_finding(offset=0))
+
+    first_page = list_findings(conn, limit=1)
+    assert len(first_page) == 2
+    assert first_page[0].finding_pk == second_pk
+    assert first_page[0].finding_id == "duplicate"
+
+    next_page = list_findings(
+        conn,
+        limit=1,
+        cursor=(first_page[0].timestamp, first_page[0].finding_pk),
+    )
+    assert [item.finding_pk for item in next_page] == [first_pk, older_pk]
+
+
+def test_list_findings_does_not_load_finding_graphs(conn, monkeypatch):
+    save_finding(conn, make_finding(contributing_alerts=(make_alert(),)))
+
+    def fail_if_loaded(*args, **kwargs):
+        raise AssertionError("list query must not load Finding graphs")
+
+    monkeypatch.setattr(repository, "load_finding", fail_if_loaded)
+    summaries = list_findings(conn)
+
+    assert len(summaries) == 1
+    assert summaries[0].finding_id == "finding-1"
 
 
 # 14. foreign-key enforcement

@@ -6,7 +6,7 @@ A Python-based security log analysis and threat detection system designed to ing
 
 🚧 Under active development.
 
-The core end-to-end detection pipeline is operational and regression-tested. Current development is focused on hardening the detection architecture before adding persistence, dashboards, and additional detection capabilities.
+The detection pipeline, investigation projection, SQLite persistence, and read-only investigation API are operational.
 
 ## Goal
 
@@ -40,16 +40,20 @@ DetectionEngine
 Detection Rules
    ↓
 Alert[]
-   ↓
-CorrelationEngine
-   ↓
-Finding[]
-   ↓
-Reporter
-   ├── Human-readable text
-   └── JSON
-   ↓
-CLI stdout
+   ├── Reporter
+   │   ├── Human-readable text
+   │   └── JSON
+   │       ↓
+   │    CLI stdout
+   └── CorrelationEngine
+       ↓
+    Finding[]
+       ↓
+ SQLite Persistence
+       ↓
+ Investigation API (FindingView projection)
+       ↓
+    Future UI
 ```
 
 ### Core Design Principle
@@ -222,7 +226,7 @@ The project has an automated regression suite covering:
 * CLI behavior
 * End-to-end fixture-based detection
 
-The current suite contains **228 passing tests**.
+The current suite contains **262 passing tests**.
 
 Detection behavior that is important to the system is covered by regression tests and documented in the project documentation.
 
@@ -235,6 +239,7 @@ Detailed engineering and behavioral documentation is maintained separately from 
 * [`Detection Engine and Pipeline`](docs/detection-engine.md) — dispatch order, fail-fast errors, parser misses, and continuing stream state.
 * [`Correlation Semantics`](docs/correlation.md) — the V1 credential attack success scenario and the reconnaissance-to-credential-attack scenario, event-time state, evidence, and deterministic identity.
 * [`Persistence`](docs/persistence.md) — the SQLite schema, identity strategy, and replay behavior for storing NormalizedEvents, Alerts, and Findings.
+* [`Investigation API`](docs/investigation-api.md) — read-only finding endpoints, filters, timestamp behavior, pagination, and response boundaries.
 
 Additional documentation will be added as the architecture develops.
 

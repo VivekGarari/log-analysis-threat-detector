@@ -1,4 +1,8 @@
+import os
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from threat_detector.alerts.models import Alert
 from threat_detector.correlation.models import Finding
@@ -7,6 +11,32 @@ from threat_detector.normalization.event import NormalizedEvent
 
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_investigation_domain_imports_do_not_load_persistence():
+    source_root = Path(__file__).resolve().parents[2] / "src"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(source_root), environment.get("PYTHONPATH", "")]
+    )
+    script = "\n".join(
+        [
+            "import sys",
+            "from threat_detector.investigation.models import FindingView",
+            "from threat_detector.investigation.view import build_finding_view",
+            "assert FindingView is not None and callable(build_finding_view)",
+            "assert not any(name == 'threat_detector.persistence' or "
+            "name.startswith('threat_detector.persistence.') for name in sys.modules)",
+        ]
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
 
 
 def make_alert(

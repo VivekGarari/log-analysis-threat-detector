@@ -7,6 +7,16 @@ name = "log-analysis-threat-detector"
 version = "0.1.0"
 description = "A Python-based log analysis and threat detection tool"
 requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+test = [
+    "httpx>=0.27,<1",
+    "pytest>=8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

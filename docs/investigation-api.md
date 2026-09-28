@@ -13,6 +13,8 @@ python -m uvicorn threat_detector.api.app:app --host 127.0.0.1 --port 8000
 
 The default database path is `threat_detector.sqlite3` in the current working directory. Set `THREAT_DETECTOR_DATABASE` to use another SQLite file. The API initializes its schema on startup. OpenAPI documentation is available at `/docs` while the server is running.
 
+The CLI processes Linux, Windows, and Apache logs through detection and correlation, and persists produced Findings with their contributing Alerts and Events. Set `THREAT_DETECTOR_DATABASE` for both the CLI and API to share a database, or pass `--database PATH` to the CLI and configure the API with the same path. The CLI creates/initializes the database only when processing produces Findings; its existing Alert report output is unchanged.
+
 ## Endpoints
 
 ### `GET /findings`

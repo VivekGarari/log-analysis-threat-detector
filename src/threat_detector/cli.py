@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 from threat_detector.application.pipeline import DetectionPipeline
+from threat_detector.application.processor import process_and_persist
+from threat_detector.correlation.engine import CorrelationEngine
 from threat_detector.detection.engine import DetectionEngine
 from threat_detector.detection.rules.invalid_user import InvalidUserRule
 from threat_detector.detection.rules.password_spraying import PasswordSprayingRule
@@ -36,6 +38,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reference-time",
         help="timezone-aware ISO-8601 reference time for linux-auth",
+    )
+    parser.add_argument(
+        "--database",
+        type=Path,
+        help=(
+            "SQLite database for Findings (defaults to THREAT_DETECTOR_DATABASE "
+            "or threat_detector.sqlite3 in the current directory)"
+        ),
     )
     return parser
 
@@ -69,10 +79,21 @@ def _build_pipeline(
             parse_linux_line,
             lambda event: normalize_linux_event(event, reference_time),
             engine,
+            CorrelationEngine(),
         )
     elif record_format == "windows-security":
-        return DetectionPipeline(parse_windows_event, normalize_windows_security_event, engine)
-    return DetectionPipeline(parse_apache_line, normalize_apache_access_event, engine)
+        return DetectionPipeline(
+            parse_windows_event,
+            normalize_windows_security_event,
+            engine,
+            CorrelationEngine(),
+        )
+    return DetectionPipeline(
+        parse_apache_line,
+        normalize_apache_access_event,
+        engine,
+        CorrelationEngine(),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -97,8 +118,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             records = read_log_file(str(input_path))
 
-        alerts = _build_pipeline(args.format, reference_time).process(records)
-        output = report_json(alerts) if args.output == "json" else report_text(alerts)
+        result = process_and_persist(
+            _build_pipeline(args.format, reference_time), records, args.database
+        )
+        output = (
+            report_json(result.alerts)
+            if args.output == "json"
+            else report_text(result.alerts)
+        )
         print(output)
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)

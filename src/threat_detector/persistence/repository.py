@@ -180,45 +180,53 @@ def load_alert(connection: sqlite3.Connection, alert_pk: int) -> Alert:
 
 def save_finding(connection: sqlite3.Connection, finding: Finding) -> int:
     """Persist a Finding and its contributing Alerts/NormalizedEvents atomically."""
+    if connection.in_transaction:
+        return _insert_finding_graph(connection, finding)
     with connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO findings (
-                finding_id, finding_type, severity, title, description,
-                timestamp, source_ip, username, evidence, raw_events
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                finding.finding_id,
-                finding.finding_type,
-                finding.severity,
-                finding.title,
-                finding.description,
-                _timestamp_to_text(finding.timestamp),
-                finding.source_ip,
-                finding.username,
-                _encode_strings(finding.evidence),
-                _encode_strings(finding.raw_events),
-            ),
+        return _insert_finding_graph(connection, finding)
+
+
+def _insert_finding_graph(
+    connection: sqlite3.Connection, finding: Finding
+) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO findings (
+            finding_id, finding_type, severity, title, description,
+            timestamp, source_ip, username, evidence, raw_events
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            finding.finding_id,
+            finding.finding_type,
+            finding.severity,
+            finding.title,
+            finding.description,
+            _timestamp_to_text(finding.timestamp),
+            finding.source_ip,
+            finding.username,
+            _encode_strings(finding.evidence),
+            _encode_strings(finding.raw_events),
+        ),
+    )
+    finding_pk = cursor.lastrowid
+    assert finding_pk is not None
+
+    for position, alert in enumerate(finding.contributing_alerts):
+        alert_pk = _insert_alert(connection, alert)
+        connection.execute(
+            "INSERT INTO finding_alerts (finding_pk, alert_pk, position) "
+            "VALUES (?, ?, ?)",
+            (finding_pk, alert_pk, position),
         )
-        finding_pk = cursor.lastrowid
-        assert finding_pk is not None
 
-        for position, alert in enumerate(finding.contributing_alerts):
-            alert_pk = _insert_alert(connection, alert)
-            connection.execute(
-                "INSERT INTO finding_alerts (finding_pk, alert_pk, position) "
-                "VALUES (?, ?, ?)",
-                (finding_pk, alert_pk, position),
-            )
-
-        for position, event in enumerate(finding.contributing_events):
-            event_pk = _insert_normalized_event(connection, event)
-            connection.execute(
-                "INSERT INTO finding_events (finding_pk, event_pk, position) "
-                "VALUES (?, ?, ?)",
-                (finding_pk, event_pk, position),
-            )
+    for position, event in enumerate(finding.contributing_events):
+        event_pk = _insert_normalized_event(connection, event)
+        connection.execute(
+            "INSERT INTO finding_events (finding_pk, event_pk, position) "
+            "VALUES (?, ?, ?)",
+            (finding_pk, event_pk, position),
+        )
 
     return finding_pk
 

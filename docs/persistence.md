@@ -2,7 +2,7 @@
 
 ## Scope
 
-`threat_detector.persistence` is a SQLite-backed storage layer for `NormalizedEvent`, `Alert`, and `Finding`. It is strictly additive and downstream: it is never imported by `detection/`, `correlation/`, or `investigation/`, and it does not change any existing domain contract. `FindingView` is never persisted — it is always rebuilt from a `Finding` via `build_finding_view`.
+`threat_detector.persistence` is a SQLite-backed storage layer for `NormalizedEvent`, `Alert`, and `Finding`. Application orchestration persists produced Findings through the repository after detection and correlation; detection and correlation remain persistence-independent. `FindingView` is never persisted — it is always rebuilt from a `Finding` via `build_finding_view`.
 
 ## Technology
 

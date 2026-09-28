@@ -1,4 +1,3 @@
-import os
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,18 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from threat_detector.api.routes import router
+from threat_detector.persistence.config import resolve_database_path
 from threat_detector.persistence.schema import connect, initialize_schema
 
 
-DEFAULT_DATABASE_PATH = "threat_detector.sqlite3"
-DATABASE_ENVIRONMENT_VARIABLE = "THREAT_DETECTOR_DATABASE"
-
-
 def create_app(database_path: str | Path | None = None) -> FastAPI:
-    selected_path = str(
-        database_path
-        or os.environ.get(DATABASE_ENVIRONMENT_VARIABLE, DEFAULT_DATABASE_PATH)
-    )
+    selected_path = resolve_database_path(database_path)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

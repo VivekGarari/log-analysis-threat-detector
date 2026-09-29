@@ -227,7 +227,7 @@ The project has an automated regression suite covering:
 * CLI behavior
 * End-to-end fixture-based detection
 
-The current suite contains **265 passing tests**.
+The current suite contains **299 passing tests**.
 
 Detection behavior that is important to the system is covered by regression tests and documented in the project documentation.
 

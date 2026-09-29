@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from threat_detector.alerts.models import Alert
 from threat_detector.reporting.text import report
+from threat_detector.resource_limits import ResourceLimitExceeded
 
 
 def make_alert(
@@ -66,6 +69,15 @@ def test_empty_input_returns_empty_string():
     assert report([]) == ""
 
 
+def test_report_byte_limit_accepts_exact_size_and_rejects_one_byte_less():
+    alerts = [make_alert()]
+    expected = report(alerts)
+
+    assert report(alerts, max_bytes=len(expected.encode("utf-8"))) == expected
+    with pytest.raises(ResourceLimitExceeded, match="report UTF-8 bytes"):
+        report(alerts, max_bytes=len(expected.encode("utf-8")) - 1)
+
+
 def test_raw_events_escape_terminal_control_characters():
     raw_event = (
         "before\x1b[31mred\x1b[0m"
@@ -87,3 +99,12 @@ def test_raw_events_preserve_ordinary_printable_text():
     output = report([make_alert(raw_events=["GET /login?user=alice HTTP/1.1"])])
 
     assert "  - GET /login?user=alice HTTP/1.1" in output
+
+
+def test_control_escaped_report_byte_limit_matches_rendered_size():
+    alerts = [make_alert(raw_events=["\x00" * 64])]
+    expected = report(alerts)
+
+    assert report(alerts, max_bytes=len(expected.encode("utf-8"))) == expected
+    with pytest.raises(ResourceLimitExceeded, match="report UTF-8 bytes"):
+        report(alerts, max_bytes=len(expected.encode("utf-8")) - 1)

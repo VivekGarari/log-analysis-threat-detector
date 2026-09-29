@@ -1,8 +1,11 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from threat_detector.alerts.models import Alert
 from threat_detector.reporting.json import report
+from threat_detector.resource_limits import ResourceLimitExceeded
 
 
 def make_alert(alert_id: str = "alert-1") -> Alert:
@@ -53,6 +56,18 @@ def test_multiple_alerts_preserve_input_order():
 
 def test_empty_input_produces_empty_array():
     assert report([]) == "[]"
+    assert report([], max_bytes=2) == "[]"
+    with pytest.raises(ResourceLimitExceeded, match="report UTF-8 bytes"):
+        report([], max_bytes=1)
+
+
+def test_report_byte_limit_accepts_exact_size_and_rejects_one_byte_less():
+    alerts = [make_alert()]
+    expected = report(alerts)
+
+    assert report(alerts, max_bytes=len(expected.encode("utf-8"))) == expected
+    with pytest.raises(ResourceLimitExceeded, match="report UTF-8 bytes"):
+        report(alerts, max_bytes=len(expected.encode("utf-8")) - 1)
 
 
 def test_output_is_deterministic():

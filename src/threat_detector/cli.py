@@ -1,6 +1,7 @@
 import argparse
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from threat_detector.detection.rules.invalid_user import InvalidUserRule
 from threat_detector.detection.rules.password_spraying import PasswordSprayingRule
 from threat_detector.detection.rules.ssh_brute_force import SSHBruteForceRule
 from threat_detector.detection.rules.web_reconnaissance import WebReconnaissanceRule
-from threat_detector.ingestion.reader import read_log_file
+from threat_detector.ingestion.reader import iter_log_file, read_windows_xml_file
 from threat_detector.normalization.apache_access import normalize_apache_access_event
 from threat_detector.normalization.linux_auth import normalize_linux_event
 from threat_detector.normalization.windows_security import (
@@ -22,6 +23,7 @@ from threat_detector.parsers.apache_access import parse_line as parse_apache_lin
 from threat_detector.parsers.linux_auth import parse_line as parse_linux_line
 from threat_detector.parsers.windows_security import parse_event as parse_windows_event
 from threat_detector.reporting import report_json, report_text
+from threat_detector.resource_limits import DEFAULT_RESOURCE_LIMITS
 
 
 SUPPORTED_FORMATS = ("linux-auth", "windows-security", "apache-access")
@@ -113,19 +115,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     try:
+        limits = DEFAULT_RESOURCE_LIMITS
         if args.format == "windows-security":
-            records = [input_path.read_text(encoding="utf-8")]
+            limits = replace(
+                DEFAULT_RESOURCE_LIMITS,
+                max_record_bytes=DEFAULT_RESOURCE_LIMITS.windows_xml_max_bytes,
+            )
+            records = [
+                read_windows_xml_file(input_path, limits)
+            ]
         else:
-            records = read_log_file(str(input_path))
+            records = iter_log_file(str(input_path), limits)
 
-        result = process_and_persist(
-            _build_pipeline(args.format, reference_time), records, args.database
+        output: str | None = None
+
+        def build_report_before_persist(result) -> None:
+            nonlocal output
+            output = (
+                report_json(
+                    result.alerts,
+                    max_bytes=limits.max_report_bytes,
+                )
+                if args.output == "json"
+                else report_text(
+                    result.alerts,
+                    max_bytes=limits.max_report_bytes,
+                )
+            )
+
+        process_and_persist(
+            _build_pipeline(args.format, reference_time),
+            records,
+            args.database,
+            limits=limits,
+            before_persist=build_report_before_persist,
         )
-        output = (
-            report_json(result.alerts)
-            if args.output == "json"
-            else report_text(result.alerts)
-        )
+        assert output is not None
         print(output)
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)

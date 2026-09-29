@@ -21,6 +21,17 @@ The reporters still render `Alert` objects, not Findings. Existing text and JSON
 
 The `--database` option selects the Findings database. Database path precedence is explicit `--database`, then `THREAT_DETECTOR_DATABASE`, then `threat_detector.sqlite3`. Relative paths depend on the process working directory.
 
+## Processing Resource Limits
+
+The CLI uses centralized finite application defaults. Byte limits use binary units and line limits count UTF-8 bytes, excluding the record separator:
+
+* Input file: 256 MiB; at most 1,000,000 records; at most 64 KiB per line-oriented record.
+* Windows Security XML document: 16 MiB.
+* Per run: at most 50,000 Alerts, 25,000 Findings, 128 MiB of logical result payload, and 128 MiB of logical persisted Finding-graph payload.
+* Selected text or JSON report: at most 64 MiB UTF-8.
+
+Exceeding a processing budget fails the invocation with a processing error (exit code `1`); records, Alerts, and Findings are not truncated or silently discarded. The complete report is checked before the Finding transaction can commit. These application limits do not change API behavior, detection semantics, or the persistence schema.
+
 Successful processing returns exit code `0`, whether alerts exist or the result is empty. A zero-alert JSON result is the valid JSON value `[]`.
 
 Argument errors and invalid input paths use `argparse` error handling and exit with code `2`. Processing failures, including normalizer, detection-rule, and reporter failures, are written as `error: ...` to stderr and return exit code `1`.

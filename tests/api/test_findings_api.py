@@ -16,6 +16,7 @@ from threat_detector.persistence.schema import connect, initialize_schema
 
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+SQLITE_MAX_INTEGER = 9_223_372_036_854_775_807
 
 
 def make_finding(
@@ -430,6 +431,44 @@ def test_missing_detail_returns_404(database_path):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Finding not found"}
+
+
+@pytest.mark.parametrize(
+    ("finding_pk", "expected_status"),
+    [(1, 200), (2, 200), (SQLITE_MAX_INTEGER, 404)],
+)
+def test_detail_accepts_positive_sqlite_integer_range(
+    database_path, finding_pk, expected_status
+):
+    seed(
+        database_path,
+        make_finding(finding_id="finding-1"),
+        make_finding(finding_id="finding-2"),
+    )
+
+    with client_for(database_path) as client:
+        response = client.get(f"/findings/{finding_pk}")
+
+    assert response.status_code == expected_status
+
+
+@pytest.mark.parametrize(
+    "finding_pk",
+    [0, -1, SQLITE_MAX_INTEGER + 1, SQLITE_MAX_INTEGER + 2, 10**100],
+)
+def test_detail_rejects_invalid_or_oversized_finding_pk(database_path, finding_pk):
+    with client_for(database_path) as client:
+        response = client.get(f"/findings/{finding_pk}")
+
+    assert response.status_code == 422
+
+
+def test_detail_sqlite_overflow_value_returns_validation_error(database_path):
+    with client_for(database_path) as client:
+        response = client.get(f"/findings/{SQLITE_MAX_INTEGER + 1}")
+
+    assert response.status_code == 422
+    assert "OverflowError" not in response.text
 
 
 def test_database_errors_are_generic_and_do_not_leak_details(database_path):

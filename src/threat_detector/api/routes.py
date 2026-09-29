@@ -12,6 +12,7 @@ from threat_detector.api.models import (
 from threat_detector.investigation.service import (
     FindingNotFoundError,
     InvalidInvestigationQuery,
+    MAX_SQLITE_INTEGER,
     get_finding_view,
     list_investigations,
 )
@@ -94,7 +95,7 @@ def list_findings_endpoint(
 
 @router.get("/{finding_pk}", response_model=FindingDetailResponse)
 def get_finding_endpoint(
-    finding_pk: Annotated[int, Path(gt=0)],
+    finding_pk: Annotated[int, Path(gt=0, le=MAX_SQLITE_INTEGER)],
     connection: Annotated[sqlite3.Connection, Depends(get_connection)],
 ) -> FindingDetailResponse:
     try:

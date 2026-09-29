@@ -59,6 +59,6 @@ Returns the finding view for the exact persisted `finding_pk`. The response cont
 
 ## Errors
 
-Invalid filters, timestamps, ranges, limits, or cursors return `422`. A missing `finding_pk` returns `404`. A valid list query with no matches returns `200` with `items: []` and `next_cursor: null`. Unexpected SQLite failures return a generic `500` response without database or exception details.
+Invalid filters, timestamps, ranges, limits, cursors, or detail `finding_pk` values outside the positive signed 64-bit SQLite integer range return `422`. A missing in-range `finding_pk` returns `404`. A valid list query with no matches returns `200` with `items: []` and `next_cursor: null`. Unexpected SQLite failures return a generic `500` response without database or exception details.
 
 This MVP has no authentication or authorization layer. Keep the development server bound to loopback and do not expose it to untrusted networks.

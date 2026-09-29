@@ -33,28 +33,27 @@ Normalizer
    ↓
 NormalizedEvent
    ↓
-DetectionPipeline
-   ↓
 DetectionEngine
    ↓
-Detection Rules
-   ↓
 Alert[]
-   ├── Reporter
-   │   ├── Human-readable text
-   │   └── JSON
-   │       ↓
-   │    CLI stdout
-   └── CorrelationEngine
-       ↓
-    Finding[]
-       ↓
- SQLite Persistence
-       ↓
- Investigation API (FindingView projection)
-       ↓
-    Future UI
+   ↓
+CorrelationEngine(NormalizedEvent, Alert[])
+   ↓
+Finding[]
+   ↓
+process_and_persist()
+   ↓
+SQLite
+   ↓
+Investigation Service/API
+   ↓
+FindingView
+   ↓
+GET /findings
+GET /findings/{finding_pk}
 ```
+
+The CLI sends `Alert[]` to the text or JSON reporter and prints that Alert output. Findings are persisted, but are not printed by the CLI; the investigation API is the interface for querying them.
 
 ### Core Design Principle
 
@@ -188,7 +187,7 @@ Alerts are instantaneous detection results. Findings are separate correlation re
 
 ## CLI
 
-The current application can process supported log formats through the command line.
+The CLI processes one input file per invocation and supports the listed log formats and Alert output formats.
 
 General form:
 
@@ -211,7 +210,9 @@ text
 json
 ```
 
-Linux authentication logs additionally require an explicit timezone-aware reference timestamp because the source format does not contain a year.
+`--format linux-auth` requires `--reference-time` with a timezone-aware ISO-8601 timestamp because the source format does not contain a year.
+
+Generated Findings are persisted to SQLite. Database path precedence is `--database`, then `THREAT_DETECTOR_DATABASE`, then `threat_detector.sqlite3` in the process working directory. Relative paths are resolved from that working directory.
 
 ## Testing
 
@@ -226,7 +227,7 @@ The project has an automated regression suite covering:
 * CLI behavior
 * End-to-end fixture-based detection
 
-The current suite contains **262 passing tests**.
+The current suite contains **265 passing tests**.
 
 Detection behavior that is important to the system is covered by regression tests and documented in the project documentation.
 
@@ -235,7 +236,7 @@ Detection behavior that is important to the system is covered by regression test
 Detailed engineering and behavioral documentation is maintained separately from this overview.
 
 * [`Detection Rule Semantics`](docs/detection-rules.md) — stateful detection windows, watermark behavior, grouping, duplicate handling, suppression, expiration, and out-of-order events.
-* [`Alert Semantics`](docs/alert-semantics.md) — detection snapshots, timestamp meaning, deterministic identity, rule suppression, and deferred persistence decisions.
+* [`Alert Semantics`](docs/alert-semantics.md) — detection snapshots, timestamp meaning, deterministic identity, rule suppression, and downstream Finding semantics.
 * [`Detection Engine and Pipeline`](docs/detection-engine.md) — dispatch order, fail-fast errors, parser misses, and continuing stream state.
 * [`Correlation Semantics`](docs/correlation.md) — the V1 credential attack success scenario and the reconnaissance-to-credential-attack scenario, event-time state, evidence, and deterministic identity.
 * [`Persistence`](docs/persistence.md) — the SQLite schema, identity strategy, and replay behavior for storing NormalizedEvents, Alerts, and Findings.
@@ -266,7 +267,6 @@ Planned areas include:
 * Configuration
 * CLI usability
 * Additional serious detection capabilities
-* Persistence
 * Security-focused dashboards
 
 Features will be added only after the underlying contracts are sufficiently well-defined and tested.

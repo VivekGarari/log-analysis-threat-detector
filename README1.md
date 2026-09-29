@@ -1,5 +1,7 @@
 Log Analysis & Threat Detection Engine
 
+> **Archival / earlier aspirational documentation:** This document describes an earlier Linux/SSH-focused MVP and broader ambitions, not the current system specification. See [README.md](README.md) for the current implementation.
+
 A defensive security telemetry and detection-engineering project designed to ingest heterogeneous logs, normalize security events, correlate behavior, identify suspicious activity, and produce explainable alerts.
 
 1. Why I Am Building This

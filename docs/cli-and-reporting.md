@@ -1,10 +1,25 @@
 # CLI and Reporting
 
-This document records the current boundary between the command-line interface, the detection pipeline, and the two reporters.
+This document records the current boundary between the command-line interface, the producer workflow, and the two Alert reporters.
 
 ## CLI Contract
 
-The CLI creates a fresh format-specific pipeline and detection engine for each invocation. It processes the selected input format, collects the resulting `Alert` objects, and sends the same alert list to the selected reporter.
+The CLI accepts one input file per invocation and creates a fresh format-specific pipeline and detection engine for it. The producer workflow is:
+
+```text
+Input log
+ → parser/normalizer
+ → DetectionEngine
+ → Alert[]
+ → CorrelationEngine(NormalizedEvent, Alert[])
+ → Finding[]
+ → process_and_persist()
+ → SQLite
+```
+
+The reporters still render `Alert` objects, not Findings. Existing text and JSON outputs remain Alert-based: JSON serialization is unchanged, and the text reporter visibly escapes non-printing characters in raw-event evidence. When correlation produces Findings, `process_and_persist()` stores them in SQLite. Findings are not currently printed by the CLI; the investigation API is the query and investigation interface.
+
+The `--database` option selects the Findings database. Database path precedence is explicit `--database`, then `THREAT_DETECTOR_DATABASE`, then `threat_detector.sqlite3`. Relative paths depend on the process working directory.
 
 Successful processing returns exit code `0`, whether alerts exist or the result is empty. A zero-alert JSON result is the valid JSON value `[]`.
 
@@ -27,6 +42,6 @@ JSON is the machine-readable representation. It preserves the complete current `
 
 ## Text Output
 
-Text output is intended for human-readable analysis rather than lossless interchange. It preserves alert order and displays alert IDs, rule information, descriptions, timestamps, source fields, evidence, and raw events.
+Text output is intended for human-readable analysis rather than lossless interchange. It preserves alert and raw-event order and displays alert IDs, rule information, descriptions, timestamps, source fields, evidence, and raw events. Non-printing characters in raw events are escaped for terminal safety; ordinary printable text remains readable.
 
 Missing scalar values and empty lists are displayed as `N/A`. JSON should be used when machine-readable distinction between null, empty collections, and textual values is required.

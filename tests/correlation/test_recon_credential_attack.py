@@ -55,10 +55,10 @@ def make_spray_alert(
 
 
 def make_carrier_event(
-    offset: int, *, source_ip: str | None = SOURCE_IP
+    offset: int, *, microseconds: int = 0, source_ip: str | None = SOURCE_IP
 ) -> NormalizedEvent:
     return NormalizedEvent(
-        timestamp=BASE_TIME + timedelta(seconds=offset),
+        timestamp=BASE_TIME + timedelta(seconds=offset, microseconds=microseconds),
         source="test",
         event_type="other",
         hostname=None,
@@ -134,6 +134,74 @@ def test_181_seconds_does_not_correlate():
     findings = engine.process(make_carrier_event(181), [make_spray_alert(offset=181)])
 
     assert findings == []
+
+
+def test_recon_expiry_keeps_boundary_and_expires_after_microsecond():
+    engine = CorrelationEngine()
+    engine.process(make_carrier_event(0), [make_recon_alert()])
+
+    engine.process(make_carrier_event(180), [])
+    assert len(engine._recon_alerts_by_source_ip[SOURCE_IP]) == 1
+
+    engine.process(make_carrier_event(180, microseconds=1), [])
+    assert engine._recon_alerts_by_source_ip == {}
+    assert engine._recon_expiry_heap == []
+
+
+def test_replayed_recon_alert_insertions_expire_independently():
+    engine = CorrelationEngine()
+    replay = make_recon_alert("replayed")
+    engine.process(make_carrier_event(0), [replay, replay])
+
+    assert len(engine._recon_alerts_by_source_ip[SOURCE_IP]) == 2
+    assert len(engine._recon_expiry_heap) == 2
+
+    engine.process(make_carrier_event(180, microseconds=1), [])
+
+    assert engine._recon_alerts_by_source_ip == {}
+    assert engine._recon_expiry_heap == []
+
+
+def test_recon_expiry_removes_only_sources_past_the_boundary():
+    engine = CorrelationEngine()
+    first_source = "192.0.2.31"
+    second_source = "192.0.2.32"
+    active_source = "192.0.2.33"
+    engine.process(
+        make_carrier_event(0),
+        [
+            make_recon_alert("first", source_ip=first_source),
+            make_recon_alert("second", source_ip=second_source),
+        ],
+    )
+    engine.process(
+        make_carrier_event(1),
+        [make_recon_alert("active", offset=1, source_ip=active_source)],
+    )
+
+    engine.process(make_carrier_event(180, microseconds=1), [])
+
+    assert set(engine._recon_alerts_by_source_ip) == {active_source}
+    assert len(engine._recon_alerts_by_source_ip[active_source]) == 1
+    assert len(engine._recon_expiry_heap) == 1
+
+
+def test_expired_recon_alert_is_replaced_by_fresh_correlation():
+    engine = CorrelationEngine()
+    engine.process(make_carrier_event(0), [make_recon_alert("old")])
+    engine.process(make_carrier_event(180, microseconds=1), [])
+    assert engine.process(
+        make_carrier_event(181), [make_spray_alert(offset=181)]
+    ) == []
+
+    fresh = make_recon_alert("fresh", offset=181)
+    engine.process(make_carrier_event(181), [fresh])
+    findings = engine.process(
+        make_carrier_event(182), [make_spray_alert(offset=182)]
+    )
+
+    assert len(findings) == 1
+    assert findings[0].contributing_alerts == (fresh, make_spray_alert(offset=182))
 
 
 def test_spraying_alert_without_recon_context_does_not_correlate():

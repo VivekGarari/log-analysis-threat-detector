@@ -1,3 +1,4 @@
+from heapq import heappop, heappush
 from datetime import datetime, timedelta
 from hashlib import sha256
 
@@ -10,8 +11,11 @@ class CorrelationEngine:
     CORRELATION_WINDOW = timedelta(seconds=180)
 
     def __init__(self) -> None:
-        self._alerts_by_source_ip: dict[str, list[Alert]] = {}
-        self._recon_alerts_by_source_ip: dict[str, list[Alert]] = {}
+        self._alerts_by_source_ip: dict[str, dict[int, Alert]] = {}
+        self._recon_alerts_by_source_ip: dict[str, dict[int, Alert]] = {}
+        self._alert_expiry_heap: list[tuple[datetime, int, str]] = []
+        self._recon_expiry_heap: list[tuple[datetime, int, str]] = []
+        self._insertion_sequence = 0
         self._watermark: datetime | None = None
 
     def process(
@@ -37,30 +41,32 @@ class CorrelationEngine:
         if self._watermark is None:
             return
 
-        for source_ip, alerts in list(self._alerts_by_source_ip.items()):
-            retained = [
-                alert
-                for alert in alerts
-                if alert.timestamp + self.CORRELATION_WINDOW >= self._watermark
-            ]
-            if retained:
-                self._alerts_by_source_ip[source_ip] = retained
-            else:
+        while (
+            self._alert_expiry_heap
+            and self._alert_expiry_heap[0][0] < self._watermark
+        ):
+            _, sequence, source_ip = heappop(self._alert_expiry_heap)
+            alerts = self._alerts_by_source_ip.get(source_ip)
+            if alerts is None:
+                continue
+            alerts.pop(sequence, None)
+            if not alerts:
                 del self._alerts_by_source_ip[source_ip]
 
     def _expire_recon_alerts(self) -> None:
         if self._watermark is None:
             return
 
-        for source_ip, alerts in list(self._recon_alerts_by_source_ip.items()):
-            retained = [
-                alert
-                for alert in alerts
-                if alert.timestamp + self.CORRELATION_WINDOW >= self._watermark
-            ]
-            if retained:
-                self._recon_alerts_by_source_ip[source_ip] = retained
-            else:
+        while (
+            self._recon_expiry_heap
+            and self._recon_expiry_heap[0][0] < self._watermark
+        ):
+            _, sequence, source_ip = heappop(self._recon_expiry_heap)
+            alerts = self._recon_alerts_by_source_ip.get(source_ip)
+            if alerts is None:
+                continue
+            alerts.pop(sequence, None)
+            if not alerts:
                 del self._recon_alerts_by_source_ip[source_ip]
 
     def _correlate_success(self, event: NormalizedEvent) -> list[Finding]:
@@ -78,7 +84,7 @@ class CorrelationEngine:
 
         eligible_alerts = [
             alert
-            for alert in self._alerts_by_source_ip.get(event.source_ip, [])
+            for alert in self._alerts_by_source_ip.get(event.source_ip, {}).values()
             if alert.timestamp < event.timestamp
             and event.timestamp - alert.timestamp <= self.CORRELATION_WINDOW
         ]
@@ -95,7 +101,19 @@ class CorrelationEngine:
         for alert in alerts:
             if alert.rule_id != "ssh_brute_force" or alert.source_ip is None:
                 continue
-            self._alerts_by_source_ip.setdefault(alert.source_ip, []).append(alert)
+            self._insertion_sequence += 1
+            sequence = self._insertion_sequence
+            self._alerts_by_source_ip.setdefault(alert.source_ip, {})[
+                sequence
+            ] = alert
+            heappush(
+                self._alert_expiry_heap,
+                (
+                    alert.timestamp + self.CORRELATION_WINDOW,
+                    sequence,
+                    alert.source_ip,
+                ),
+            )
 
     def _correlate_password_spraying(self, alerts: list[Alert]) -> list[Finding]:
         findings: list[Finding] = []
@@ -106,8 +124,8 @@ class CorrelationEngine:
             eligible_recon_alerts = [
                 recon_alert
                 for recon_alert in self._recon_alerts_by_source_ip.get(
-                    alert.source_ip, []
-                )
+                    alert.source_ip, {}
+                ).values()
                 if recon_alert.timestamp < alert.timestamp
                 and alert.timestamp - recon_alert.timestamp <= self.CORRELATION_WINDOW
             ]
@@ -127,8 +145,18 @@ class CorrelationEngine:
         for alert in alerts:
             if alert.rule_id != "web_reconnaissance" or alert.source_ip is None:
                 continue
-            self._recon_alerts_by_source_ip.setdefault(alert.source_ip, []).append(
-                alert
+            self._insertion_sequence += 1
+            sequence = self._insertion_sequence
+            self._recon_alerts_by_source_ip.setdefault(alert.source_ip, {})[
+                sequence
+            ] = alert
+            heappush(
+                self._recon_expiry_heap,
+                (
+                    alert.timestamp + self.CORRELATION_WINDOW,
+                    sequence,
+                    alert.source_ip,
+                ),
             )
 
     @staticmethod

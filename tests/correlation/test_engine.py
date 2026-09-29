@@ -12,6 +12,7 @@ SOURCE_IP = "192.0.2.10"
 def make_event(
     offset: int,
     *,
+    microseconds: int = 0,
     source_ip: str | None = SOURCE_IP,
     event_type: str = "authentication_success",
     service: str | None = "ssh",
@@ -19,7 +20,7 @@ def make_event(
     raw: str | None = None,
 ) -> NormalizedEvent:
     return NormalizedEvent(
-        timestamp=BASE_TIME + timedelta(seconds=offset),
+        timestamp=BASE_TIME + timedelta(seconds=offset, microseconds=microseconds),
         source="test",
         event_type=event_type,
         hostname="host",
@@ -138,6 +139,70 @@ def test_alerts_are_retained_per_source_and_expire_by_event_watermark():
     isolated = CorrelationEngine()
     isolated.process(make_event(0, event_type="other"), [make_alert()])
     assert isolated.process(make_event(1, source_ip="192.0.2.11"), []) == []
+
+
+def test_brute_force_alert_expiry_keeps_boundary_and_expires_after_microsecond():
+    engine = CorrelationEngine()
+    engine.process(make_event(0, event_type="other"), [make_alert()])
+
+    engine.process(make_event(180, event_type="other"), [])
+    assert len(engine._alerts_by_source_ip[SOURCE_IP]) == 1
+
+    engine.process(make_event(180, microseconds=1, event_type="other"), [])
+    assert engine._alerts_by_source_ip == {}
+    assert engine._alert_expiry_heap == []
+
+
+def test_replayed_brute_force_alert_insertions_expire_independently():
+    engine = CorrelationEngine()
+    replay = make_alert("replayed")
+    engine.process(make_event(0, event_type="other"), [replay, replay])
+
+    assert len(engine._alerts_by_source_ip[SOURCE_IP]) == 2
+    assert len(engine._alert_expiry_heap) == 2
+
+    engine.process(make_event(180, microseconds=1, event_type="other"), [])
+
+    assert engine._alerts_by_source_ip == {}
+    assert engine._alert_expiry_heap == []
+
+
+def test_brute_force_expiry_removes_only_sources_past_the_boundary():
+    engine = CorrelationEngine()
+    first_source = "192.0.2.31"
+    second_source = "192.0.2.32"
+    active_source = "192.0.2.33"
+    engine.process(
+        make_event(0, event_type="other"),
+        [
+            make_alert("first", source_ip=first_source),
+            make_alert("second", source_ip=second_source),
+        ],
+    )
+    engine.process(
+        make_event(1, event_type="other"),
+        [make_alert("active", offset=1, source_ip=active_source)],
+    )
+
+    engine.process(make_event(180, microseconds=1, event_type="other"), [])
+
+    assert set(engine._alerts_by_source_ip) == {active_source}
+    assert len(engine._alerts_by_source_ip[active_source]) == 1
+    assert len(engine._alert_expiry_heap) == 1
+
+
+def test_expired_brute_force_alert_is_replaced_by_fresh_correlation():
+    engine = CorrelationEngine()
+    engine.process(make_event(0, event_type="other"), [make_alert("old")])
+    engine.process(make_event(180, microseconds=1, event_type="other"), [])
+    assert engine.process(make_event(181), []) == []
+
+    fresh = make_alert("fresh", offset=181)
+    engine.process(make_event(181, event_type="other"), [fresh])
+    findings = engine.process(make_event(182), [])
+
+    assert len(findings) == 1
+    assert findings[0].contributing_alerts == (fresh,)
 
 
 def test_out_of_order_success_can_correlate_but_stale_success_cannot():

@@ -5,13 +5,15 @@ from threat_detector.resource_limits import ResourceLimitExceeded
 
 
 def _display(value: object) -> str:
-    return "N/A" if value is None else str(value)
+    return "N/A" if value is None else _escape_terminal_controls(str(value))
 
 
 def _display_list(values: list[str]) -> str:
     if not values:
         return "N/A"
-    return "\n".join(f"  - {value}" for value in values)
+    return "\n".join(
+        f"  - {_escape_terminal_controls(value)}" for value in values
+    )
 
 
 def _escape_terminal_controls(value: str) -> str:
@@ -31,7 +33,7 @@ def _escape_terminal_controls(value: str) -> str:
 def _display_raw_events(values: list[str]) -> str:
     if not values:
         return "N/A"
-    return _display_list([_escape_terminal_controls(value) for value in values])
+    return _display_list(values)
 
 
 def _render_alert(alert: Alert) -> str:
@@ -82,7 +84,9 @@ def _alert_report_bytes(alert: Alert) -> int:
         "evidence:",
     ]
     if alert.evidence:
-        lines.extend(f"  - {value}" for value in alert.evidence)
+        lines.extend(
+            f"  - {_escape_terminal_controls(value)}" for value in alert.evidence
+        )
     else:
         lines.append("N/A")
     lines.append("raw_events:")
